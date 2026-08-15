@@ -35,6 +35,7 @@ export function FontSizeSliderRow(props: {
   readonly step: number;
   readonly value: number;
   readonly onChange: (value: number) => void;
+  readonly onPreviewChange?: (value: number | null) => void;
 }) {
   const icon = useThemeColor("--color-icon");
   const iconMuted = String(useThemeColor("--color-icon-muted"));
@@ -48,21 +49,30 @@ export function FontSizeSliderRow(props: {
   const fraction = (value - min) / (max - min);
 
   const progress = useSharedValue(clampFraction(fraction));
+  const previewValue = useSharedValue(value);
   const trackWidth = useSharedValue(0);
   const dragging = useSharedValue(false);
 
   useEffect(() => {
     if (!dragging.value) {
       progress.value = withTiming(clampFraction(fraction), SNAP_ANIMATION);
+      previewValue.value = value;
     }
-  }, [dragging, fraction, progress]);
+  }, [dragging, fraction, previewValue, progress, value]);
+
+  const preview = useCallback((next: number | null) => {
+    latest.current.onPreviewChange?.(next);
+  }, []);
 
   const commit = useCallback((next: number) => {
-    if (next === latest.current.value) {
+    const current = latest.current;
+    if (next === current.value) {
+      current.onPreviewChange?.(null);
       return;
     }
     Haptics.selectionAsync().catch(() => undefined);
-    latest.current.onChange(next);
+    current.onChange(next);
+    current.onPreviewChange?.(null);
   }, []);
 
   const gesture = useMemo(() => {
@@ -96,29 +106,52 @@ export function FontSizeSliderRow(props: {
         dragging.value = true;
         const f = fractionAt(event.x);
         progress.value = f;
-        runOnJS(commit)(valueAtFraction(f));
+        const next = valueAtFraction(f);
+        if (next !== previewValue.value) {
+          previewValue.value = next;
+          runOnJS(preview)(next);
+        }
       })
-      .onFinalize(() => {
+      .onFinalize((_event, success) => {
         if (!dragging.value) {
           return;
         }
         dragging.value = false;
-        progress.value = withTiming(
-          fractionOfValue(valueAtFraction(progress.value)),
-          SNAP_ANIMATION,
-        );
+        if (!success) {
+          previewValue.value = value;
+          progress.value = withTiming(fractionOfValue(value), SNAP_ANIMATION);
+          runOnJS(preview)(null);
+          return;
+        }
+        const next = valueAtFraction(progress.value);
+        previewValue.value = next;
+        progress.value = withTiming(fractionOfValue(next), SNAP_ANIMATION);
+        runOnJS(commit)(next);
       });
 
     const tap = Gesture.Tap()
       .enabled(!disabled)
       .onEnd((event) => {
         const next = valueAtFraction(fractionAt(event.x));
+        previewValue.value = next;
         progress.value = withTiming(fractionOfValue(next), SNAP_ANIMATION);
         runOnJS(commit)(next);
       });
 
     return Gesture.Race(pan, tap);
-  }, [commit, disabled, dragging, max, min, progress, step, trackWidth]);
+  }, [
+    commit,
+    disabled,
+    dragging,
+    max,
+    min,
+    preview,
+    previewValue,
+    progress,
+    step,
+    trackWidth,
+    value,
+  ]);
 
   const fillStyle = useAnimatedStyle(() => ({
     width: THUMB_SIZE / 2 + progress.value * Math.max(0, trackWidth.value - THUMB_SIZE),

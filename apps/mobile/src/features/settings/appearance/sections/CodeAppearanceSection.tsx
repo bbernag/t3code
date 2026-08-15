@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import {
   CODE_FONT_SIZE_STEP,
@@ -17,6 +17,8 @@ import { FontSizeSliderRow } from "../components/FontSizeSliderRow";
 export function CodeAppearanceSection() {
   const { isReady, appearance, setCodeFontSize, setCodeWordBreak } = useAppearancePreferences();
   const custom = appearance.isCodeFontSizeCustom;
+  const [previewFontSize, setPreviewFontSize] = useState<number | null>(null);
+  const fontSize = previewFontSize ?? appearance.codeFontSize;
 
   const handleToggleCustom = useCallback(
     (enabled: boolean) => {
@@ -27,10 +29,7 @@ export function CodeAppearanceSection() {
 
   return (
     <SettingsSection card title="Code & Diffs">
-      <CodeAppearancePreview
-        fontSize={appearance.codeFontSize}
-        wordBreak={appearance.codeWordBreak}
-      />
+      <CodeAppearancePreview fontSize={fontSize} wordBreak={appearance.codeWordBreak} />
       <AppearancePreviewSeparator />
       <SettingsSwitchRow
         disabled={!isReady}
@@ -47,9 +46,10 @@ export function CodeAppearanceSection() {
           max={MAX_CODE_FONT_SIZE}
           min={MIN_CODE_FONT_SIZE}
           onChange={setCodeFontSize}
+          onPreviewChange={setPreviewFontSize}
           step={CODE_FONT_SIZE_STEP}
           value={appearance.codeFontSize}
-          valueLabel={`${appearance.codeFontSize} pt`}
+          valueLabel={`${fontSize} pt`}
         />
       ) : null}
       <SettingsSwitchRow
