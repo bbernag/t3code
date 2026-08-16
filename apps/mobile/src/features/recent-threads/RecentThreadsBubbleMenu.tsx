@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Pressable, ScrollView, View, type ColorValue } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import Animated, {
   ReduceMotion,
   useAnimatedStyle,
@@ -58,15 +58,12 @@ const STATUS_PRESENTATION = {
 export function RecentThreadsBubbleMenu(props: {
   readonly items: ReadonlyArray<RecentThreadBubbleItem>;
   readonly layout: FloatingChatMenuLayout;
-  readonly onClear: () => void;
   readonly onClose: () => void;
-  readonly onResetPosition: () => void;
   readonly onSelectThread: (item: RecentThreadBubbleItem) => void;
 }) {
   const foregroundColor = useThemeColor("--color-foreground");
   const mutedColor = useThemeColor("--color-foreground-muted");
   const subtleColor = useThemeColor("--color-subtle");
-  const dangerColor = useThemeColor("--color-danger-foreground");
   const progress = useSharedValue(0);
 
   useEffect(() => {
@@ -164,59 +161,7 @@ export function RecentThreadsBubbleMenu(props: {
             </Pressable>
           );
         })}
-        <View className="min-h-[52px] flex-row border-t border-border">
-          <MenuAction
-            color={mutedColor}
-            icon="arrow.clockwise"
-            label="Reset position"
-            labelClassName="text-foreground-muted"
-            pressedColor={subtleColor}
-            onPress={props.onResetPosition}
-          />
-          <View className="w-px bg-border" />
-          <MenuAction
-            color={dangerColor}
-            icon="trash"
-            label="Clear"
-            labelClassName="text-danger-foreground"
-            pressedColor={subtleColor}
-            onPress={props.onClear}
-          />
-        </View>
       </ScrollView>
     </Animated.View>
-  );
-}
-
-function MenuAction(props: {
-  readonly color: ColorValue;
-  readonly icon: "arrow.clockwise" | "trash";
-  readonly label: string;
-  readonly labelClassName: string;
-  readonly pressedColor: ColorValue;
-  readonly onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityLabel={props.label}
-      accessibilityRole="button"
-      android_ripple={{ color: props.pressedColor }}
-      className="min-h-[52px] flex-1 flex-row items-center justify-center gap-[7px] px-2 py-2 active:bg-subtle"
-      onPress={props.onPress}
-    >
-      <SymbolView
-        name={props.icon}
-        size={15}
-        tintColor={props.color}
-        type="monochrome"
-        weight="medium"
-      />
-      <Text
-        className={cn("shrink text-center text-[12px] font-t3-medium", props.labelClassName)}
-        numberOfLines={2}
-      >
-        {props.label}
-      </Text>
-    </Pressable>
   );
 }

@@ -20,7 +20,7 @@ describe("floating recent chats layout", () => {
   });
 
   it("estimates the bounded menu from its visible rows", () => {
-    expect(estimateFloatingChatMenuHeight(5)).toBe(420);
+    expect(estimateFloatingChatMenuHeight(5)).toBe(368);
   });
 
   it("round-trips docked positions inside safe bounds", () => {

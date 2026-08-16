@@ -275,8 +275,8 @@ is read. Selection continues to close the menu and navigate through the host.
 - Do not load full thread details, messages, activities, or Markdown merely to
   calculate attention.
 - Do not add polling, timers, idle animation, or a production dependency.
-- Persist only discrete history, acknowledgement, clear/reset, and final
-  position changes. Never persist during gesture or animation frames.
+- Persist only discrete history, acknowledgement, and final position changes.
+  Never persist during gesture or animation frames.
 - Preserve the memoized visual boundary so a shell update that does not change
   a row’s attention presentation does not rerender the animated bubble.
 
@@ -288,7 +288,6 @@ is read. Selection continues to close the menu and navigate through the host.
 - Malformed persisted acknowledgement timestamps are treated as absent and
   migrated to a safe read baseline when current shell state becomes available.
 - Malformed server timestamps do not create false attention.
-- Clearing recent chats also clears their acknowledgement metadata.
 - Deduplication remains scoped by both `environmentId` and `threadId`, so
   identically named or numbered chats from different environments cannot share
   read state.

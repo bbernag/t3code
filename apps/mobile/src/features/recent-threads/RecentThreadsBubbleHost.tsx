@@ -37,7 +37,7 @@ import {
 } from "./recentThreads";
 import { useRecentThreadShells } from "./useRecentThreadShells";
 
-type SnapshotMutation = "position" | "threadsMerge" | "threadsReplace";
+type SnapshotMutation = "position" | "threadsMerge";
 type HydrationStatus = "failed" | "loaded" | "loading";
 const POSITION_EQUALITY_EPSILON = 0.0001;
 const EMPTY_RECENT_THREADS: ReadonlyArray<RecentThreadBubbleEntry> = [];
@@ -119,11 +119,6 @@ function useRecentThreadBubbleSnapshot() {
             ...changedBeforeHydrationRef.current,
             position: true,
           };
-        } else if (mutation === "threadsReplace") {
-          changedBeforeHydrationRef.current = {
-            ...changedBeforeHydrationRef.current,
-            threads: "replace",
-          };
         } else if (changedBeforeHydrationRef.current.threads === "unchanged") {
           changedBeforeHydrationRef.current = {
             ...changedBeforeHydrationRef.current,
@@ -151,11 +146,6 @@ function useRecentThreadBubbleSnapshot() {
     },
     [commit],
   );
-  const clearThreads = useCallback(() => {
-    commit("threadsReplace", (current) =>
-      current.threads.length === 0 ? current : { ...current, threads: [] },
-    );
-  }, [commit]);
   const acknowledgeThread = useCallback(
     (thread: RecentThreadRef, acknowledgedAt: string) => {
       commit("threadsMerge", (current) => {
@@ -182,19 +172,12 @@ function useRecentThreadBubbleSnapshot() {
     },
     [commit],
   );
-  const resetPosition = useCallback(() => {
-    commit("position", (current) =>
-      current.position === null ? current : { ...current, position: null },
-    );
-  }, [commit]);
 
   return {
     snapshot,
     acknowledgeThread,
-    clearThreads,
     initializeAcknowledgements,
     recordThread,
-    resetPosition,
     setPosition,
   };
 }
@@ -205,15 +188,8 @@ export function RecentThreadsBubbleHost(props: {
 }) {
   const navigation = useNavigation();
   const { width, height } = useWindowDimensions();
-  const {
-    snapshot,
-    acknowledgeThread,
-    clearThreads,
-    initializeAcknowledgements,
-    recordThread,
-    resetPosition,
-    setPosition,
-  } = useRecentThreadBubbleSnapshot();
+  const { snapshot, acknowledgeThread, initializeAcknowledgements, recordThread, setPosition } =
+    useRecentThreadBubbleSnapshot();
   const activeThreadRef = useMemo(
     () =>
       props.topRouteName === "NewTaskSheet" ? null : parseActiveThreadPath(props.workspacePathname),
@@ -344,9 +320,7 @@ export function RecentThreadsBubbleHost(props: {
       items={items}
       position={snapshot.position}
       width={width}
-      onClear={clearThreads}
       onPositionChange={setPosition}
-      onResetPosition={resetPosition}
       onSelectThread={handleSelectThread}
     />
   );

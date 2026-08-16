@@ -118,17 +118,22 @@ describe("recent thread history", () => {
       thread("new"),
       thread("old"),
     ]);
-  });
-
-  it("does not restore persisted history after an explicit pre-hydration clear", () => {
     expect(
       hydrateRecentThreadSnapshot({
-        current: { threads: [], position: null },
-        persisted: { threads: [thread("old")], position: { x: 0.2, y: 0.3 } },
-        changes: { position: false, threads: "replace" },
+        current: { threads: [thread("new")], position: null },
+        persisted: {
+          threads: [thread("old"), thread("new")],
+          position: { x: 0.2, y: 0.3 },
+        },
+        changes: { position: false, threads: "merge" },
       }),
-    ).toEqual({ threads: [], position: { x: 0.2, y: 0.3 } });
+    ).toEqual({
+      threads: [thread("new"), thread("old")],
+      position: { x: 0.2, y: 0.3 },
+    });
+  });
 
+  it("preserves a pre-hydration position change", () => {
     expect(
       hydrateRecentThreadSnapshot({
         current: { threads: [], position: null },

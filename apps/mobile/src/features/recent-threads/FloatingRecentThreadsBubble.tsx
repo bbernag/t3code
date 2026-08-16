@@ -67,9 +67,7 @@ type Props = {
   readonly items: ReadonlyArray<RecentThreadBubbleItem>;
   readonly position: RecentThreadBubblePosition | null;
   readonly width: number;
-  readonly onClear: () => void;
   readonly onPositionChange: (position: RecentThreadBubblePosition) => void;
-  readonly onResetPosition: () => void;
   readonly onSelectThread: (item: RecentThreadBubbleItem) => void;
 };
 
@@ -103,9 +101,7 @@ function arePropsEqual(previous: Props, next: Props): boolean {
     previous.position?.x === next.position?.x &&
     previous.position?.y === next.position?.y &&
     previous.width === next.width &&
-    previous.onClear === next.onClear &&
     previous.onPositionChange === next.onPositionChange &&
-    previous.onResetPosition === next.onResetPosition &&
     previous.onSelectThread === next.onSelectThread
   );
 }
@@ -390,12 +386,9 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
         case "moveDown":
           moveForAccessibility(0, ACCESSIBILITY_NUDGE);
           break;
-        case "resetPosition":
-          props.onResetPosition();
-          break;
       }
     },
-    [moveForAccessibility, props.onResetPosition],
+    [moveForAccessibility],
   );
 
   const handleSelectThread = useCallback(
@@ -406,16 +399,6 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
     },
     [props.onSelectThread],
   );
-  const handleResetPosition = useCallback(() => {
-    setMenuOpen(false);
-    fireSelectionHaptic();
-    props.onResetPosition();
-  }, [props.onResetPosition]);
-  const handleClear = useCallback(() => {
-    setMenuOpen(false);
-    fireSelectionHaptic();
-    props.onClear();
-  }, [props.onClear]);
 
   return (
     <OverlayPortal>
@@ -432,9 +415,7 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
           <RecentThreadsBubbleMenu
             items={props.items}
             layout={menuLayout}
-            onClear={handleClear}
             onClose={closeMenu}
-            onResetPosition={handleResetPosition}
             onSelectThread={handleSelectThread}
           />
         ) : null}
@@ -446,7 +427,6 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
               { name: "moveRight", label: "Move right" },
               { name: "moveUp", label: "Move up" },
               { name: "moveDown", label: "Move down" },
-              { name: "resetPosition", label: "Reset position" },
             ]}
             accessibilityHint="Double tap to show recent chats, or drag to move"
             accessibilityLabel={recentThreadsBubbleAccessibilityLabel(props.attentionCount)}
@@ -457,7 +437,7 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
             onAccessibilityTap={toggleMenu}
             style={bubbleStyle}
           >
-            <View className="size-12 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary-shadow">
+            <View className="h-12 w-12 items-center justify-center rounded-full bg-primary shadow-lg">
               <SymbolView
                 name="text.bubble"
                 size={22}

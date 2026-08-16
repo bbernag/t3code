@@ -26,11 +26,9 @@ in the menu. Rows show **Approval**, **Input**, or **Done** when a chat needs yo
 the number. Opening the menu leaves these indicators intact; opening a specific chat marks its
 attention as seen on that device.
 
-The menu excludes the thread already open. Use **Reset position** to return the bubble to its
-default trailing-edge position, or **Clear** to hide it until you leave another thread. Recent
-threads and the bubble position are stored only on that mobile device; they do not sync through a
-T3 environment. The bubble is hidden on the chat list, the new-task screen, and split layouts where
-the thread sidebar is already visible.
+The menu excludes the thread already open. Recent threads and the bubble position are stored only
+on that mobile device; they do not sync through a T3 environment. The bubble is hidden on the chat
+list, the new-task screen, and split layouts where the thread sidebar is already visible.
 
 ## Environment artwork
 

@@ -8,7 +8,7 @@ import { RECENT_THREAD_BUBBLE_MAX_THREADS } from "../../persistence/recent-threa
 export type RecentThreadRef = Pick<RecentThreadBubbleEntry, "environmentId" | "threadId">;
 export type RecentThreadHydrationChanges = {
   readonly position: boolean;
-  readonly threads: "merge" | "replace" | "unchanged";
+  readonly threads: "merge" | "unchanged";
 };
 export type RecentThreadAcknowledgement = {
   readonly thread: RecentThreadRef;
@@ -173,9 +173,7 @@ export function hydrateRecentThreadSnapshot(input: {
   const threads =
     input.changes.threads === "unchanged"
       ? input.persisted.threads
-      : input.changes.threads === "replace"
-        ? input.current.threads
-        : mergeRecentThreads(input.current.threads, input.persisted.threads);
+      : mergeRecentThreads(input.current.threads, input.persisted.threads);
   return {
     threads,
     position: input.changes.position ? input.current.position : input.persisted.position,

@@ -80,8 +80,8 @@ References:
   thread, that thread becomes eligible on its first departure.
 - Recent entries and the normalized launcher position are device-local and
   survive app restarts. They are not synchronized through a T3 server.
-- Clearing recents hides the launcher until another thread departure. Resetting
-  its position returns it to the trailing edge without clearing history.
+- The menu contains no clear or reset actions. Recent history rotates through
+  its five-entry bound, and the launcher position changes only through dragging.
 - Compact phone layouts show the launcher only on thread destinations. Home,
   the new-task flow, and split layouts hide it because their thread lists
   already provide peer navigation.
@@ -135,7 +135,7 @@ Performance requirements:
 - Gesture updates and transforms stay in Reanimated worklets on the UI thread.
 - No React state, atom, storage, or portal writes occur on animation frames.
 - JavaScript receives only discrete gesture events: open/close, navigation
-  selection, clear/reset, and one normalized-position commit after settling.
+  selection, and one normalized-position commit after settling.
   Shell updates only recompute the bounded row statuses and read cursors.
 - Worklets perform only constant-time clamp and transform arithmetic.
 - The menu renders at most five rows and is unmounted while closed.
@@ -154,7 +154,7 @@ Performance requirements:
   reference. Existing thread loading/unavailable screens own the result.
 - If a thread was deleted, archived, or its environment was removed after it
   entered recents, the existing route remains the final race-condition guard;
-  selecting or clearing the stale row cannot affect another thread.
+  selecting the stale row cannot affect another thread.
 
 ## Phase two candidates
 

@@ -13,7 +13,6 @@ export const FLOATING_CHAT_MENU_MAX_WIDTH = 320;
 const FLOATING_CHAT_RELEASE_PROJECTION_SECONDS = 0.1;
 const FLOATING_CHAT_MENU_HEADER_HEIGHT = 48;
 const FLOATING_CHAT_MENU_ROW_HEIGHT = 64;
-const FLOATING_CHAT_MENU_ACTION_HEIGHT = 52;
 
 export type FloatingChatPoint = {
   readonly x: number;
@@ -39,9 +38,7 @@ export type FloatingChatMenuLayout = {
 
 export function estimateFloatingChatMenuHeight(threadCount: number): number {
   return (
-    FLOATING_CHAT_MENU_HEADER_HEIGHT +
-    Math.max(0, threadCount) * FLOATING_CHAT_MENU_ROW_HEIGHT +
-    FLOATING_CHAT_MENU_ACTION_HEIGHT
+    FLOATING_CHAT_MENU_HEADER_HEIGHT + Math.max(0, threadCount) * FLOATING_CHAT_MENU_ROW_HEIGHT
   );
 }
 
