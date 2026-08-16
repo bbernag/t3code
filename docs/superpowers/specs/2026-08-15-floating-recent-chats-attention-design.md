@@ -2,7 +2,7 @@
 
 ## Status
 
-Design agreed on 2026-08-15. Implementation is intentionally deferred.
+Design agreed on 2026-08-15 and implemented on 2026-08-16.
 
 ## Purpose
 
@@ -51,8 +51,14 @@ message previews.
   present: approval, then input, then completion.
 - Reuse the status colors already used by the mobile thread list and Agent
   Activity surfaces rather than introducing a second status palette.
-- Rows without unacknowledged attention keep the current title, project label,
-  and chevron presentation without an empty badge placeholder.
+- Rows without unacknowledged attention or an active operational status keep
+  the current title, project label, and chevron presentation without an empty
+  badge placeholder.
+- Recent chats whose agents are still active show a non-attention status:
+  - `Working` while the main turn or background work is running;
+  - `Monitoring` while a background monitor is the only live work.
+- `Working` and `Monitoring` are informational. They do not increment the
+  bubble counter, and the recent list remains bounded to five chats.
 
 ### Acknowledgement
 
@@ -186,6 +192,16 @@ prefers a repeat alert over silently missing a newer request. Identifying the
 exact pending request would require expanding the shared shell contract and is
 not part of this refinement.
 
+A completed timestamp on an `interrupted` latest-turn state is also treated as
+completion. Session teardown can race the completion projection and leave this
+combination even when the agent finished normally; this matches the existing
+agent-awareness behavior. Error turns remain excluded from the `Done` badge.
+
+Live main-turn or background work takes visual priority over an unseen
+completion. The row continues to say `Working` or `Monitoring`, and the
+completion becomes `Done` only after that work ends. Approval and input still
+outrank live work because they require the user's action.
+
 When a chat becomes active, acknowledge the newest signal currently visible in
 that chat. When the user leaves the chat, retain a server-timestamp baseline so
 later shell activity can raise attention without comparing against the phone’s
@@ -220,6 +236,7 @@ The host should:
 
 - observe only the recent chat references and the active chat;
 - derive row attention data;
+- derive live working and monitoring presentation for the same bounded rows;
 - acknowledge a chat on activation or selection;
 - pass the attention count and row classifications into the visual leaf;
 - persist acknowledgement changes through the existing serialized save queue;
@@ -280,29 +297,18 @@ is read. Selection continues to close the menu and navigate through the host.
 - The active chat is never included in the count, even if its server-side
   request remains pending.
 
-## Testing plan for the deferred implementation
+## Validation
 
-Add focused pure and persistence tests covering:
+Focused pure and persistence tests cover signal priority, read-cursor
+comparison, completion projection races, working/monitoring precedence,
+attention counting, monotonic acknowledgement, metadata merge behavior,
+version-one migration, malformed timestamps, persistence bounds, active-chat
+exclusion, and accessibility copy.
 
-- an unseen completion after the acknowledgement cursor;
-- a completion at or before the cursor remaining read;
-- approval and input priority over completion;
-- one chat with several conditions contributing only one count;
-- the active chat being excluded;
-- opening the menu not changing acknowledgement state;
-- selecting one row acknowledging only that chat;
-- navigating to a chat outside the bubble acknowledging it;
-- a later completion or pending request reappearing after acknowledgement;
-- zero attention hiding only the numeric badge, not the launcher;
-- version-one snapshot migration without historical badge flooding;
-- hydration and deduplication preserving acknowledgement metadata;
-- malformed timestamps and missing/deleted shell state;
-- accessibility copy for zero, one, and multiple attention chats.
-
-Run the recent-thread and bubble persistence tests, targeted mobile typecheck,
-targeted formatting and lint checks, and the required rules review when
-implementation resumes. Device or simulator validation should be requested
-separately because it requires computer-use authorization.
+The implementation was also checked with the recent-thread and bubble-layout
+test files, mobile TypeScript typecheck, targeted formatter and lint checks,
+and the required engineering-rules review. Device or simulator validation was
+not run because it requires separate computer-use authorization.
 
 ## Deferred work
 

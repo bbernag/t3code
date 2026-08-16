@@ -5,7 +5,6 @@ import {
   Keyboard,
   Platform,
   Pressable,
-  StyleSheet,
   View,
   type AccessibilityActionEvent,
 } from "react-native";
@@ -26,14 +25,9 @@ import { AppText as Text } from "../../components/AppText";
 import { SymbolView } from "../../components/AppSymbol";
 import { OverlayPortal } from "../../components/OverlayPortal";
 import { useThemeColor } from "../../lib/useThemeColor";
-import type {
-  RecentThreadBubbleEntry,
-  RecentThreadBubblePosition,
-} from "../../persistence/imperative";
+import type { RecentThreadBubblePosition } from "../../persistence/imperative";
 import {
-  FLOATING_CHAT_BUBBLE_SIZE,
   FLOATING_CHAT_BUBBLE_TOUCH_INSET,
-  FLOATING_CHAT_BUBBLE_TOUCH_SIZE,
   clampFloatingChatValue,
   estimateFloatingChatMenuHeight,
   normalizeFloatingChatPoint,
@@ -43,6 +37,10 @@ import {
   resolveFloatingChatPoint,
 } from "./floatingRecentThreadsLayout";
 import { RecentThreadsBubbleMenu } from "./RecentThreadsBubbleMenu";
+import {
+  recentThreadsBubbleAccessibilityLabel,
+  type RecentThreadBubbleItem,
+} from "./recentThreadAttention";
 
 const POSITION_SPRING = {
   damping: 18,
@@ -64,15 +62,53 @@ const PRESS_TIMING = {
 const ACCESSIBILITY_NUDGE = 52;
 
 type Props = {
+  readonly attentionCount: number;
   readonly height: number;
+  readonly items: ReadonlyArray<RecentThreadBubbleItem>;
   readonly position: RecentThreadBubblePosition | null;
-  readonly threads: ReadonlyArray<RecentThreadBubbleEntry>;
   readonly width: number;
   readonly onClear: () => void;
   readonly onPositionChange: (position: RecentThreadBubblePosition) => void;
   readonly onResetPosition: () => void;
-  readonly onSelectThread: (thread: RecentThreadBubbleEntry) => void;
+  readonly onSelectThread: (item: RecentThreadBubbleItem) => void;
 };
+
+function areBubbleItemsEqual(
+  left: ReadonlyArray<RecentThreadBubbleItem>,
+  right: ReadonlyArray<RecentThreadBubbleItem>,
+): boolean {
+  return (
+    left === right ||
+    (left.length === right.length &&
+      left.every((item, index) => {
+        const candidate = right[index];
+        return (
+          candidate !== undefined &&
+          item.attentionOccurredAt === candidate.attentionOccurredAt &&
+          item.status === candidate.status &&
+          item.thread.environmentId === candidate.thread.environmentId &&
+          item.thread.threadId === candidate.thread.threadId &&
+          item.thread.title === candidate.thread.title &&
+          item.thread.projectTitle === candidate.thread.projectTitle
+        );
+      }))
+  );
+}
+
+function arePropsEqual(previous: Props, next: Props): boolean {
+  return (
+    previous.attentionCount === next.attentionCount &&
+    previous.height === next.height &&
+    areBubbleItemsEqual(previous.items, next.items) &&
+    previous.position?.x === next.position?.x &&
+    previous.position?.y === next.position?.y &&
+    previous.width === next.width &&
+    previous.onClear === next.onClear &&
+    previous.onPositionChange === next.onPositionChange &&
+    previous.onResetPosition === next.onResetPosition &&
+    previous.onSelectThread === next.onSelectThread
+  );
+}
 
 function fireSelectionHaptic() {
   void Haptics.selectionAsync().catch(() => undefined);
@@ -82,16 +118,12 @@ function fireSettleHaptic() {
   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
 }
 
-// The host observes active-shell metadata. Memoization keeps unrelated shell updates from
+// The host observes bounded shell metadata. Memoization keeps status-equivalent updates from
 // re-projecting this portal; Reanimated owns all drag-frame updates independently.
 export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBubble(props: Props) {
   const insets = useSafeAreaInsets();
   const { height: keyboardHeight } = useKeyboardContext().reanimated;
-  const primaryColor = useThemeColor("--color-primary");
   const primaryForegroundColor = useThemeColor("--color-primary-foreground");
-  const primaryShadowColor = useThemeColor("--color-primary-shadow");
-  const cardColor = useThemeColor("--color-card");
-  const foregroundColor = useThemeColor("--color-foreground");
   const [menuOpen, setMenuOpen] = useState(false);
 
   const bounds = useMemo(
@@ -114,9 +146,9 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
         viewportWidth: props.width,
         viewportHeight: props.height,
         insets,
-        estimatedHeight: estimateFloatingChatMenuHeight(props.threads.length),
+        estimatedHeight: estimateFloatingChatMenuHeight(props.items.length),
       }),
-    [insets, point, props.height, props.threads.length, props.width],
+    [insets, point, props.height, props.items.length, props.width],
   );
 
   const translateX = useSharedValue(point.x);
@@ -367,10 +399,10 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
   );
 
   const handleSelectThread = useCallback(
-    (thread: RecentThreadBubbleEntry) => {
+    (item: RecentThreadBubbleItem) => {
       setMenuOpen(false);
       fireSelectionHaptic();
-      props.onSelectThread(thread);
+      props.onSelectThread(item);
     },
     [props.onSelectThread],
   );
@@ -387,19 +419,19 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
 
   return (
     <OverlayPortal>
-      <View pointerEvents="box-none" style={styles.portalRoot}>
+      <View className="absolute inset-0" pointerEvents="box-none">
         {menuOpen ? (
           <Pressable
             accessibilityElementsHidden
+            className="absolute inset-0 z-[1]"
             importantForAccessibility="no-hide-descendants"
             onPress={closeMenu}
-            style={styles.backdrop}
           />
         ) : null}
         {menuOpen ? (
           <RecentThreadsBubbleMenu
+            items={props.items}
             layout={menuLayout}
-            threads={props.threads}
             onClear={handleClear}
             onClose={closeMenu}
             onResetPosition={handleResetPosition}
@@ -417,22 +449,15 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
               { name: "resetPosition", label: "Reset position" },
             ]}
             accessibilityHint="Double tap to show recent chats, or drag to move"
-            accessibilityLabel={`${props.threads.length} recent chat${props.threads.length === 1 ? "" : "s"}`}
+            accessibilityLabel={recentThreadsBubbleAccessibilityLabel(props.attentionCount)}
             accessibilityRole="button"
             accessibilityState={{ expanded: menuOpen }}
+            className="absolute left-0 top-0 z-[3] size-14 items-center justify-center"
             onAccessibilityAction={handleAccessibilityAction}
             onAccessibilityTap={toggleMenu}
-            style={[styles.touchTarget, bubbleStyle]}
+            style={bubbleStyle}
           >
-            <View
-              style={[
-                styles.bubble,
-                {
-                  backgroundColor: primaryColor,
-                  shadowColor: primaryShadowColor,
-                },
-              ]}
-            >
+            <View className="size-12 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary-shadow">
               <SymbolView
                 name="text.bubble"
                 size={22}
@@ -440,72 +465,20 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
                 type="monochrome"
                 weight="semibold"
               />
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.badge,
-                  {
-                    backgroundColor: cardColor,
-                    borderColor: primaryColor,
-                  },
-                ]}
-              >
-                <Text style={[styles.badgeText, { color: foregroundColor }]}>
-                  {props.threads.length}
-                </Text>
-              </View>
+              {props.attentionCount > 0 ? (
+                <View
+                  className="absolute -right-0.5 -top-[3px] h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-primary bg-card px-0.5"
+                  pointerEvents="none"
+                >
+                  <Text className="text-[10px] font-t3-bold leading-3 text-foreground">
+                    {props.attentionCount}
+                  </Text>
+                </View>
+              ) : null}
             </View>
           </Animated.View>
         </GestureDetector>
       </View>
     </OverlayPortal>
   );
-});
-
-const styles = StyleSheet.create({
-  portalRoot: {
-    ...StyleSheet.absoluteFill,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 1,
-  },
-  touchTarget: {
-    alignItems: "center",
-    height: FLOATING_CHAT_BUBBLE_TOUCH_SIZE,
-    justifyContent: "center",
-    left: 0,
-    position: "absolute",
-    top: 0,
-    width: FLOATING_CHAT_BUBBLE_TOUCH_SIZE,
-    zIndex: 3,
-  },
-  bubble: {
-    alignItems: "center",
-    borderRadius: FLOATING_CHAT_BUBBLE_SIZE / 2,
-    elevation: 10,
-    height: FLOATING_CHAT_BUBBLE_SIZE,
-    justifyContent: "center",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.24,
-    shadowRadius: 14,
-    width: FLOATING_CHAT_BUBBLE_SIZE,
-  },
-  badge: {
-    alignItems: "center",
-    borderRadius: 9,
-    borderWidth: 2,
-    height: 18,
-    justifyContent: "center",
-    minWidth: 18,
-    paddingHorizontal: 2,
-    position: "absolute",
-    right: -2,
-    top: -3,
-  },
-  badgeText: {
-    fontFamily: "DMSans_700Bold",
-    fontSize: 10,
-    lineHeight: 12,
-  },
-});
+}, arePropsEqual);

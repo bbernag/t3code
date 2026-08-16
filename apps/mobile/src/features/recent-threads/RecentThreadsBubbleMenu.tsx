@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, View, type ColorValue } from "react-native";
+import { Pressable, ScrollView, View, type ColorValue } from "react-native";
 import Animated, {
   ReduceMotion,
   useAnimatedStyle,
@@ -9,26 +9,60 @@ import Animated, {
 
 import { AppText as Text } from "../../components/AppText";
 import { SymbolView } from "../../components/AppSymbol";
+import { cn } from "../../lib/cn";
 import { useThemeColor } from "../../lib/useThemeColor";
-import type { RecentThreadBubbleEntry } from "../../persistence/imperative";
 import type { FloatingChatMenuLayout } from "./floatingRecentThreadsLayout";
-import { recentThreadLabel, recentThreadProjectLabel } from "./recentThreads";
+import type { RecentThreadBubbleItem, RecentThreadStatusKind } from "./recentThreadAttention";
+import { recentThreadKey, recentThreadLabel, recentThreadProjectLabel } from "./recentThreads";
 
 const MENU_TIMING = {
   duration: 140,
   reduceMotion: ReduceMotion.System,
 } as const;
 
+const STATUS_PRESENTATION = {
+  approval: {
+    label: "Approval",
+    pillClassName: "bg-amber-500/12 dark:bg-amber-500/16",
+    textClassName: "text-amber-700 dark:text-amber-300",
+  },
+  input: {
+    label: "Input",
+    pillClassName: "bg-indigo-500/12 dark:bg-indigo-500/16",
+    textClassName: "text-indigo-700 dark:text-indigo-300",
+  },
+  completed: {
+    label: "Done",
+    pillClassName: "bg-emerald-500/12 dark:bg-emerald-500/16",
+    textClassName: "text-emerald-700 dark:text-emerald-300",
+  },
+  working: {
+    label: "Working",
+    pillClassName: "bg-sky-500/12 dark:bg-sky-500/16",
+    textClassName: "text-sky-700 dark:text-sky-300",
+  },
+  monitoring: {
+    label: "Monitoring",
+    pillClassName: "bg-sky-500/12 dark:bg-sky-500/16",
+    textClassName: "text-sky-700 dark:text-sky-300",
+  },
+} as const satisfies Record<
+  RecentThreadStatusKind,
+  {
+    readonly label: string;
+    readonly pillClassName: string;
+    readonly textClassName: string;
+  }
+>;
+
 export function RecentThreadsBubbleMenu(props: {
+  readonly items: ReadonlyArray<RecentThreadBubbleItem>;
   readonly layout: FloatingChatMenuLayout;
-  readonly threads: ReadonlyArray<RecentThreadBubbleEntry>;
   readonly onClear: () => void;
   readonly onClose: () => void;
   readonly onResetPosition: () => void;
-  readonly onSelectThread: (thread: RecentThreadBubbleEntry) => void;
+  readonly onSelectThread: (item: RecentThreadBubbleItem) => void;
 }) {
-  const cardColor = useThemeColor("--color-card");
-  const borderColor = useThemeColor("--color-border");
   const foregroundColor = useThemeColor("--color-foreground");
   const mutedColor = useThemeColor("--color-foreground-muted");
   const subtleColor = useThemeColor("--color-subtle");
@@ -50,12 +84,10 @@ export function RecentThreadsBubbleMenu(props: {
   return (
     <Animated.View
       accessibilityViewIsModal
+      className="absolute z-[2] overflow-hidden rounded-[20px] border border-border bg-card shadow-2xl"
       onAccessibilityEscape={props.onClose}
       style={[
-        styles.menuShadow,
         {
-          backgroundColor: cardColor,
-          borderColor,
           left: props.layout.left,
           maxHeight: props.layout.maxHeight,
           top: props.layout.top,
@@ -66,31 +98,32 @@ export function RecentThreadsBubbleMenu(props: {
     >
       <ScrollView
         bounces={false}
-        contentContainerStyle={styles.menuContent}
+        contentContainerClassName="overflow-hidden"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.menuHeader}>
+        <View className="min-h-12 flex-row items-center justify-between px-4 py-2.5">
           <Text className="text-sm font-t3-bold text-foreground">Recent chats</Text>
-          <Text className="text-xs text-foreground-muted">{props.threads.length}</Text>
+          <Text className="text-xs text-foreground-muted">{props.items.length}</Text>
         </View>
-        {props.threads.map((thread, index) => {
+        {props.items.map((item, index) => {
+          const thread = item.thread;
           const projectLabel = recentThreadProjectLabel(thread);
+          const status = item.status === null ? null : STATUS_PRESENTATION[item.status];
           return (
             <Pressable
-              key={threadKey(thread)}
+              key={recentThreadKey(thread)}
               accessibilityHint="Opens this chat"
-              accessibilityLabel={recentThreadLabel(thread)}
+              accessibilityLabel={`${recentThreadLabel(thread)}${status === null ? "" : `, ${status.label}`}`}
               accessibilityRole="button"
-              android_ripple={{ color: String(subtleColor) }}
-              onPress={() => props.onSelectThread(thread)}
-              style={({ pressed }) => [
-                styles.threadRow,
-                index > 0 ? { borderTopColor: borderColor, borderTopWidth: 1 } : null,
-                pressed && Platform.OS !== "android" ? { backgroundColor: subtleColor } : null,
-              ]}
+              android_ripple={{ color: subtleColor }}
+              className={cn(
+                "min-h-16 flex-row items-center gap-3 px-3 py-2.5 active:bg-subtle",
+                index > 0 && "border-t border-border",
+              )}
+              onPress={() => props.onSelectThread(item)}
             >
-              <View style={[styles.threadIcon, { backgroundColor: subtleColor }]}>
+              <View className="size-9 items-center justify-center rounded-full bg-subtle">
                 <SymbolView
                   name="text.bubble"
                   size={18}
@@ -99,7 +132,7 @@ export function RecentThreadsBubbleMenu(props: {
                   weight="medium"
                 />
               </View>
-              <View style={styles.threadLabels}>
+              <View className="min-w-0 flex-1">
                 <Text className="text-[15px] font-t3-medium text-foreground" numberOfLines={1}>
                   {recentThreadLabel(thread)}
                 </Text>
@@ -109,29 +142,43 @@ export function RecentThreadsBubbleMenu(props: {
                   </Text>
                 )}
               </View>
-              <SymbolView
-                name="chevron.right"
-                size={14}
-                tintColor={mutedColor}
-                type="monochrome"
-                weight="semibold"
-              />
+              <View className="flex-row items-center gap-2">
+                {status === null ? null : (
+                  <View className={`${status.pillClassName} rounded-full px-1.5 py-0.5`}>
+                    <Text
+                      className={`text-3xs font-t3-bold ${status.textClassName}`}
+                      numberOfLines={1}
+                    >
+                      {status.label}
+                    </Text>
+                  </View>
+                )}
+                <SymbolView
+                  name="chevron.right"
+                  size={14}
+                  tintColor={mutedColor}
+                  type="monochrome"
+                  weight="semibold"
+                />
+              </View>
             </Pressable>
           );
         })}
-        <View style={[styles.actions, { borderTopColor: borderColor }]}>
+        <View className="min-h-[52px] flex-row border-t border-border">
           <MenuAction
             color={mutedColor}
             icon="arrow.clockwise"
             label="Reset position"
+            labelClassName="text-foreground-muted"
             pressedColor={subtleColor}
             onPress={props.onResetPosition}
           />
-          <View style={[styles.actionDivider, { backgroundColor: borderColor }]} />
+          <View className="w-px bg-border" />
           <MenuAction
             color={dangerColor}
             icon="trash"
             label="Clear"
+            labelClassName="text-danger-foreground"
             pressedColor={subtleColor}
             onPress={props.onClear}
           />
@@ -145,6 +192,7 @@ function MenuAction(props: {
   readonly color: ColorValue;
   readonly icon: "arrow.clockwise" | "trash";
   readonly label: string;
+  readonly labelClassName: string;
   readonly pressedColor: ColorValue;
   readonly onPress: () => void;
 }) {
@@ -152,12 +200,9 @@ function MenuAction(props: {
     <Pressable
       accessibilityLabel={props.label}
       accessibilityRole="button"
-      android_ripple={{ color: String(props.pressedColor) }}
+      android_ripple={{ color: props.pressedColor }}
+      className="min-h-[52px] flex-1 flex-row items-center justify-center gap-[7px] px-2 py-2 active:bg-subtle"
       onPress={props.onPress}
-      style={({ pressed }) => [
-        styles.action,
-        pressed && Platform.OS !== "android" ? { backgroundColor: props.pressedColor } : null,
-      ]}
     >
       <SymbolView
         name={props.icon}
@@ -166,82 +211,12 @@ function MenuAction(props: {
         type="monochrome"
         weight="medium"
       />
-      <Text numberOfLines={2} style={[styles.actionLabel, { color: props.color }]}>
+      <Text
+        className={cn("shrink text-center text-[12px] font-t3-medium", props.labelClassName)}
+        numberOfLines={2}
+      >
         {props.label}
       </Text>
     </Pressable>
   );
 }
-
-function threadKey(thread: RecentThreadBubbleEntry): string {
-  return `${encodeURIComponent(thread.environmentId)}:${encodeURIComponent(thread.threadId)}`;
-}
-
-const styles = StyleSheet.create({
-  menuShadow: {
-    borderRadius: 20,
-    borderWidth: 1,
-    elevation: 14,
-    overflow: "hidden",
-    position: "absolute",
-    shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.18,
-    shadowRadius: 24,
-    zIndex: 2,
-  },
-  menuContent: {
-    overflow: "hidden",
-  },
-  menuHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    minHeight: 48,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  threadRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: 12,
-    minHeight: 64,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  threadIcon: {
-    alignItems: "center",
-    borderRadius: 18,
-    height: 36,
-    justifyContent: "center",
-    width: 36,
-  },
-  threadLabels: {
-    flex: 1,
-    minWidth: 0,
-  },
-  actions: {
-    borderTopWidth: 1,
-    flexDirection: "row",
-    minHeight: 52,
-  },
-  action: {
-    alignItems: "center",
-    flex: 1,
-    flexDirection: "row",
-    gap: 7,
-    justifyContent: "center",
-    minHeight: 52,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-  },
-  actionDivider: {
-    width: StyleSheet.hairlineWidth,
-  },
-  actionLabel: {
-    flexShrink: 1,
-    fontFamily: "DMSans_500Medium",
-    fontSize: 12,
-    textAlign: "center",
-  },
-});

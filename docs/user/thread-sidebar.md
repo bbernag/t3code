@@ -20,6 +20,12 @@ bubble follows your push and settles against the left or right side. Press it to
 recent-thread menu. Choosing a thread switches to it without stopping any work running in the other
 threads.
 
+The number on the bubble counts recent chats with unseen work that needs attention, not every chat
+in the menu. Rows show **Approval**, **Input**, or **Done** when a chat needs you, and **Working** or
+**Monitoring** while another agent is still active. Working and monitoring chats do not increase
+the number. Opening the menu leaves these indicators intact; opening a specific chat marks its
+attention as seen on that device.
+
 The menu excludes the thread already open. Use **Reset position** to return the bubble to its
 default trailing-edge position, or **Clear** to hide it until you leave another thread. Recent
 threads and the bubble position are stored only on that mobile device; they do not sync through a

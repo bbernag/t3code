@@ -10,6 +10,10 @@ export type RecentThreadHydrationChanges = {
   readonly position: boolean;
   readonly threads: "merge" | "replace" | "unchanged";
 };
+export type RecentThreadAcknowledgement = {
+  readonly thread: RecentThreadRef;
+  readonly acknowledgedAt: string;
+};
 
 const BUBBLE_ROUTES = new Set([
   "Thread",
@@ -32,6 +36,26 @@ export function isSameRecentThread(
   );
 }
 
+export function recentThreadKey(thread: RecentThreadRef): string {
+  return `${encodeURIComponent(thread.environmentId)}:${encodeURIComponent(thread.threadId)}`;
+}
+
+function timestampValue(value: string | null): number | null {
+  if (value === null) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function latestTimestamp(
+  preferred: string | null,
+  fallback: string | null | undefined,
+): string | null {
+  const preferredValue = timestampValue(preferred);
+  const fallbackValue = timestampValue(fallback ?? null);
+  if (preferredValue === null) return fallbackValue === null ? null : (fallback ?? null);
+  return fallbackValue !== null && fallbackValue > preferredValue ? (fallback ?? null) : preferred;
+}
+
 export function departedThreadFromTransition(
   previous: RecentThreadBubbleEntry | null | undefined,
   current: RecentThreadRef | null,
@@ -50,6 +74,7 @@ function preferMetadata(
     ...preferred,
     title: preferred.title.trim() || fallback?.title || "",
     projectTitle: preferred.projectTitle.trim() || fallback?.projectTitle || "",
+    lastAcknowledgedAt: latestTimestamp(preferred.lastAcknowledgedAt, fallback?.lastAcknowledgedAt),
   };
 }
 
@@ -71,10 +96,59 @@ export function recordDepartedThread(
       entry.environmentId === threads[index]?.environmentId &&
       entry.threadId === threads[index]?.threadId &&
       entry.title === threads[index]?.title &&
-      entry.projectTitle === threads[index]?.projectTitle,
+      entry.projectTitle === threads[index]?.projectTitle &&
+      entry.lastAcknowledgedAt === threads[index]?.lastAcknowledgedAt,
   )
     ? threads
     : next;
+}
+
+export function acknowledgeRecentThread(
+  threads: ReadonlyArray<RecentThreadBubbleEntry>,
+  ref: RecentThreadRef,
+  acknowledgedAt: string,
+): ReadonlyArray<RecentThreadBubbleEntry> {
+  const nextValue = timestampValue(acknowledgedAt);
+  if (nextValue === null) return threads;
+
+  const index = threads.findIndex((thread) => isSameRecentThread(thread, ref));
+  const current = threads[index];
+  if (current === undefined) return threads;
+
+  const currentValue = timestampValue(current.lastAcknowledgedAt);
+  if (currentValue !== null && currentValue >= nextValue) return threads;
+
+  const next = [...threads];
+  next[index] = { ...current, lastAcknowledgedAt: acknowledgedAt };
+  return next;
+}
+
+export function initializeRecentThreadAcknowledgements(
+  threads: ReadonlyArray<RecentThreadBubbleEntry>,
+  acknowledgements: ReadonlyArray<RecentThreadAcknowledgement>,
+): ReadonlyArray<RecentThreadBubbleEntry> {
+  if (acknowledgements.length === 0) return threads;
+
+  const baselines = new Map<string, string>();
+  for (const acknowledgement of acknowledgements) {
+    const candidateValue = timestampValue(acknowledgement.acknowledgedAt);
+    if (candidateValue === null) continue;
+    const key = recentThreadKey(acknowledgement.thread);
+    const existing = baselines.get(key);
+    if (existing === undefined || candidateValue > Date.parse(existing)) {
+      baselines.set(key, acknowledgement.acknowledgedAt);
+    }
+  }
+
+  let changed = false;
+  const next = threads.map((thread) => {
+    if (thread.lastAcknowledgedAt !== null) return thread;
+    const baseline = baselines.get(recentThreadKey(thread));
+    if (baseline === undefined) return thread;
+    changed = true;
+    return { ...thread, lastAcknowledgedAt: baseline };
+  });
+  return changed ? next : threads;
 }
 
 export function mergeRecentThreads(

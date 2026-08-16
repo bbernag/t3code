@@ -2,8 +2,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { RecentThreadBubbleEntry } from "../../persistence/imperative";
 import {
+  acknowledgeRecentThread,
   departedThreadFromTransition,
   hydrateRecentThreadSnapshot,
+  initializeRecentThreadAcknowledgements,
   isRecentThreadsBubbleRoute,
   mergeRecentThreads,
   recordDepartedThread,
@@ -14,8 +16,9 @@ function thread(
   threadId: string,
   environmentId = "environment-1",
   title = `Thread ${threadId}`,
+  lastAcknowledgedAt: string | null = null,
 ): RecentThreadBubbleEntry {
-  return { environmentId, threadId, title, projectTitle: "T3 Code" };
+  return { environmentId, threadId, title, projectTitle: "T3 Code", lastAcknowledgedAt };
 }
 
 describe("recent thread history", () => {
@@ -35,6 +38,65 @@ describe("recent thread history", () => {
     expect(recordDepartedThread(current, thread("a", "environment-1", ""))).toEqual([
       thread("a", "environment-1", "A useful title"),
       thread("b"),
+    ]);
+  });
+
+  it("preserves the newest acknowledgement when metadata is refreshed", () => {
+    const acknowledgedAt = "2026-08-16T12:00:00.000Z";
+    const existing = thread("a", "environment-1", "Useful title", acknowledgedAt);
+
+    expect(
+      recordDepartedThread(
+        [existing],
+        thread("a", "environment-1", "Updated title", "2026-08-16T11:00:00.000Z"),
+      ),
+    ).toEqual([thread("a", "environment-1", "Updated title", acknowledgedAt)]);
+  });
+
+  it("acknowledges one chat monotonically without changing recent order", () => {
+    const threads = [thread("a"), thread("b")];
+    const acknowledged = acknowledgeRecentThread(
+      threads,
+      { environmentId: "environment-1", threadId: "b" },
+      "2026-08-16T12:00:00.000Z",
+    );
+
+    expect(acknowledged).toEqual([
+      thread("a"),
+      thread("b", "environment-1", "Thread b", "2026-08-16T12:00:00.000Z"),
+    ]);
+    expect(
+      acknowledgeRecentThread(
+        acknowledged,
+        { environmentId: "environment-1", threadId: "b" },
+        "2026-08-16T11:00:00.000Z",
+      ),
+    ).toBe(acknowledged);
+  });
+
+  it("initializes only missing acknowledgement cursors", () => {
+    const alreadyReadAt = "2026-08-16T10:00:00.000Z";
+    const threads = [
+      thread("a", "environment-1", "Thread a", alreadyReadAt),
+      thread("b"),
+      thread("c"),
+    ];
+
+    expect(
+      initializeRecentThreadAcknowledgements(threads, [
+        {
+          thread: { environmentId: "environment-1", threadId: "a" },
+          acknowledgedAt: "2026-08-16T13:00:00.000Z",
+        },
+        {
+          thread: { environmentId: "environment-1", threadId: "b" },
+          acknowledgedAt: "2026-08-16T12:00:00.000Z",
+        },
+      ]),
+    ).toEqual([
+      thread("a", "environment-1", "Thread a", alreadyReadAt),
+      thread("b", "environment-1", "Thread b", "2026-08-16T12:00:00.000Z"),
+      thread("c"),
     ]);
   });
 

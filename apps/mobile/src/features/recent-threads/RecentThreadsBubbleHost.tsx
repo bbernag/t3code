@@ -15,17 +15,32 @@ import { useProject, useThreadShell } from "../../state/entities";
 import { parseActiveThreadPath } from "../keyboard/hardwareKeyboardCommands";
 import { FloatingRecentThreadsBubble } from "./FloatingRecentThreadsBubble";
 import {
+  countRecentThreadsNeedingAttention,
+  resolveRecentThreadAcknowledgementBaseline,
+  resolveRecentThreadAttentionSignal,
+  resolveRecentThreadStatus,
+  type RecentThreadBubbleItem,
+} from "./recentThreadAttention";
+import {
+  acknowledgeRecentThread,
   departedThreadFromTransition,
   hydrateRecentThreadSnapshot,
+  initializeRecentThreadAcknowledgements,
   isRecentThreadsBubbleRoute,
+  isSameRecentThread,
+  recentThreadKey,
   recordDepartedThread,
+  type RecentThreadAcknowledgement,
   type RecentThreadHydrationChanges,
+  type RecentThreadRef,
   visibleRecentThreads,
 } from "./recentThreads";
+import { useRecentThreadShells } from "./useRecentThreadShells";
 
 type SnapshotMutation = "position" | "threadsMerge" | "threadsReplace";
 type HydrationStatus = "failed" | "loaded" | "loading";
 const POSITION_EQUALITY_EPSILON = 0.0001;
+const EMPTY_RECENT_THREADS: ReadonlyArray<RecentThreadBubbleEntry> = [];
 
 function samePosition(
   left: RecentThreadBubblePosition | null,
@@ -141,6 +156,24 @@ function useRecentThreadBubbleSnapshot() {
       current.threads.length === 0 ? current : { ...current, threads: [] },
     );
   }, [commit]);
+  const acknowledgeThread = useCallback(
+    (thread: RecentThreadRef, acknowledgedAt: string) => {
+      commit("threadsMerge", (current) => {
+        const threads = acknowledgeRecentThread(current.threads, thread, acknowledgedAt);
+        return threads === current.threads ? current : { ...current, threads };
+      });
+    },
+    [commit],
+  );
+  const initializeAcknowledgements = useCallback(
+    (acknowledgements: ReadonlyArray<RecentThreadAcknowledgement>) => {
+      commit("threadsMerge", (current) => {
+        const threads = initializeRecentThreadAcknowledgements(current.threads, acknowledgements);
+        return threads === current.threads ? current : { ...current, threads };
+      });
+    },
+    [commit],
+  );
   const setPosition = useCallback(
     (position: RecentThreadBubblePosition) => {
       commit("position", (current) =>
@@ -155,7 +188,15 @@ function useRecentThreadBubbleSnapshot() {
     );
   }, [commit]);
 
-  return { snapshot, recordThread, clearThreads, setPosition, resetPosition };
+  return {
+    snapshot,
+    acknowledgeThread,
+    clearThreads,
+    initializeAcknowledgements,
+    recordThread,
+    resetPosition,
+    setPosition,
+  };
 }
 
 export function RecentThreadsBubbleHost(props: {
@@ -164,8 +205,15 @@ export function RecentThreadsBubbleHost(props: {
 }) {
   const navigation = useNavigation();
   const { width, height } = useWindowDimensions();
-  const { snapshot, recordThread, clearThreads, setPosition, resetPosition } =
-    useRecentThreadBubbleSnapshot();
+  const {
+    snapshot,
+    acknowledgeThread,
+    clearThreads,
+    initializeAcknowledgements,
+    recordThread,
+    resetPosition,
+    setPosition,
+  } = useRecentThreadBubbleSnapshot();
   const activeThreadRef = useMemo(
     () =>
       props.topRouteName === "NewTaskSheet" ? null : parseActiveThreadPath(props.workspacePathname),
@@ -197,8 +245,12 @@ export function RecentThreadsBubbleHost(props: {
             threadId: String(activeThreadRef.threadId),
             title: activeThreadShell?.title ?? "",
             projectTitle: activeProject?.title ?? "",
+            lastAcknowledgedAt:
+              activeThreadShell === null
+                ? null
+                : resolveRecentThreadAcknowledgementBaseline(activeThreadShell),
           },
-    [activeProject?.title, activeThreadRef, activeThreadShell?.title],
+    [activeProject?.title, activeThreadRef, activeThreadShell],
   );
   const previousEntryRef = useRef<RecentThreadBubbleEntry | null | undefined>(undefined);
 
@@ -217,18 +269,68 @@ export function RecentThreadsBubbleHost(props: {
     [activeEntry, snapshot.threads],
   );
   const usesSplitView = deriveLayout({ width, height }).usesSplitView;
-  const visible =
-    visibleThreads.length > 0 && !usesSplitView && isRecentThreadsBubbleRoute(props.topRouteName);
+  const routeSupportsBubble = !usesSplitView && isRecentThreadsBubbleRoute(props.topRouteName);
+  const observedThreads = routeSupportsBubble ? visibleThreads : EMPTY_RECENT_THREADS;
+  const recentShells = useRecentThreadShells(observedThreads);
+  const items = useMemo<ReadonlyArray<RecentThreadBubbleItem>>(
+    () =>
+      visibleThreads.map((thread) => {
+        const shell = recentShells.get(recentThreadKey(thread)) ?? null;
+        return {
+          attentionOccurredAt:
+            shell === null ? null : (resolveRecentThreadAttentionSignal(shell)?.occurredAt ?? null),
+          thread,
+          status: resolveRecentThreadStatus(shell, thread.lastAcknowledgedAt),
+        };
+      }),
+    [recentShells, visibleThreads],
+  );
+  const attentionCount = useMemo(() => countRecentThreadsNeedingAttention(items), [items]);
+  const activeAttentionSignal = useMemo(
+    () =>
+      activeThreadShell === null ? null : resolveRecentThreadAttentionSignal(activeThreadShell),
+    [activeThreadShell],
+  );
+
+  useEffect(() => {
+    const isStoredRecentThread =
+      activeThreadRef !== null &&
+      snapshot.threads.some((thread) => isSameRecentThread(thread, activeThreadRef));
+    if (isStoredRecentThread && activeThreadRef !== null && activeAttentionSignal !== null) {
+      acknowledgeThread(activeThreadRef, activeAttentionSignal.occurredAt);
+    }
+  }, [acknowledgeThread, activeAttentionSignal, activeThreadRef, snapshot.threads]);
+
+  useEffect(() => {
+    const acknowledgements: RecentThreadAcknowledgement[] = [];
+    for (const thread of observedThreads) {
+      if (thread.lastAcknowledgedAt !== null) continue;
+      const shell = recentShells.get(recentThreadKey(thread));
+      if (shell === undefined) continue;
+      const baseline = resolveRecentThreadAcknowledgementBaseline(shell);
+      if (baseline !== null) {
+        acknowledgements.push({ thread, acknowledgedAt: baseline });
+      }
+    }
+    if (acknowledgements.length > 0) {
+      initializeAcknowledgements(acknowledgements);
+    }
+  }, [initializeAcknowledgements, observedThreads, recentShells]);
+
+  const visible = visibleThreads.length > 0 && routeSupportsBubble;
 
   const handleSelectThread = useCallback(
-    (thread: RecentThreadBubbleEntry) => {
+    (item: RecentThreadBubbleItem) => {
+      if (item.attentionOccurredAt !== null) {
+        acknowledgeThread(item.thread, item.attentionOccurredAt);
+      }
       const params = {
-        environmentId: thread.environmentId,
-        threadId: thread.threadId,
+        environmentId: item.thread.environmentId,
+        threadId: item.thread.threadId,
       };
       navigation.navigate("Thread", params);
     },
-    [navigation],
+    [acknowledgeThread, navigation],
   );
 
   if (!visible) {
@@ -238,8 +340,9 @@ export function RecentThreadsBubbleHost(props: {
   return (
     <FloatingRecentThreadsBubble
       height={height}
+      attentionCount={attentionCount}
+      items={items}
       position={snapshot.position}
-      threads={visibleThreads}
       width={width}
       onClear={clearThreads}
       onPositionChange={setPosition}

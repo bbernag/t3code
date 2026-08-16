@@ -1,13 +1,15 @@
-export const RECENT_THREAD_BUBBLE_SNAPSHOT_VERSION = 1;
+export const RECENT_THREAD_BUBBLE_SNAPSHOT_VERSION = 2;
 export const RECENT_THREAD_BUBBLE_MAX_THREADS = 5;
 const RECENT_THREAD_BUBBLE_MAX_TITLE_LENGTH = 240;
 const RECENT_THREAD_BUBBLE_MAX_PROJECT_TITLE_LENGTH = 120;
+const RECENT_THREAD_BUBBLE_MAX_TIMESTAMP_LENGTH = 64;
 
 export type RecentThreadBubbleEntry = {
   readonly environmentId: string;
   readonly threadId: string;
   readonly title: string;
   readonly projectTitle: string;
+  readonly lastAcknowledgedAt: string | null;
 };
 
 export type RecentThreadBubblePosition = {
@@ -33,7 +35,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function decodeEntry(value: unknown): RecentThreadBubbleEntry | null {
+function decodeTimestamp(value: unknown): string | null {
+  if (
+    typeof value !== "string" ||
+    value.length > RECENT_THREAD_BUBBLE_MAX_TIMESTAMP_LENGTH ||
+    !Number.isFinite(Date.parse(value))
+  ) {
+    return null;
+  }
+  return value;
+}
+
+function decodeEntry(value: unknown, version: 1 | 2): RecentThreadBubbleEntry | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -58,6 +71,7 @@ function decodeEntry(value: unknown): RecentThreadBubbleEntry | null {
     threadId,
     title: title.slice(0, RECENT_THREAD_BUBBLE_MAX_TITLE_LENGTH),
     projectTitle: projectTitle.slice(0, RECENT_THREAD_BUBBLE_MAX_PROJECT_TITLE_LENGTH),
+    lastAcknowledgedAt: version === 1 ? null : decodeTimestamp(value.lastAcknowledgedAt),
   };
 }
 
@@ -82,14 +96,14 @@ function decodePosition(value: unknown): RecentThreadBubblePosition | null {
 }
 
 export function decodeRecentThreadBubbleSnapshot(input: unknown): RecentThreadBubbleSnapshot {
-  if (!isRecord(input) || input.version !== RECENT_THREAD_BUBBLE_SNAPSHOT_VERSION) {
+  if (!isRecord(input) || (input.version !== 1 && input.version !== 2)) {
     return EMPTY_RECENT_THREAD_BUBBLE_SNAPSHOT;
   }
 
   const threads: RecentThreadBubbleEntry[] = [];
   if (Array.isArray(input.threads)) {
     for (const value of input.threads) {
-      const entry = decodeEntry(value);
+      const entry = decodeEntry(value, input.version);
       if (
         entry !== null &&
         !threads.some(
@@ -121,6 +135,7 @@ export function encodeRecentThreadBubbleSnapshot(
       ...thread,
       title: thread.title.slice(0, RECENT_THREAD_BUBBLE_MAX_TITLE_LENGTH),
       projectTitle: thread.projectTitle.slice(0, RECENT_THREAD_BUBBLE_MAX_PROJECT_TITLE_LENGTH),
+      lastAcknowledgedAt: decodeTimestamp(thread.lastAcknowledgedAt),
     })),
     position: snapshot.position,
   };

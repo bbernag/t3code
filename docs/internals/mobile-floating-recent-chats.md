@@ -2,9 +2,9 @@
 
 ## Purpose
 
-T3 Code users often move from one thread into Home or a new task and then need
-to return to the previous thread quickly. Searching the complete thread list is
-unnecessarily expensive for that short navigation loop.
+T3 Code users often move among several active threads and need to return to the
+previous ones quickly. Searching the complete thread list is unnecessarily
+expensive for that short navigation loop.
 
 The feature is split into two phases:
 
@@ -67,6 +67,12 @@ References:
   not render one bubble per thread.
 - The bubble appears after the user leaves the first canonical server thread.
 - Pressing it opens up to five recent threads in most-recently-left order.
+- Its numeric badge counts recent off-screen threads with unseen approval,
+  input, or completed-turn signals rather than the number of menu rows.
+- Menu rows also project `Working` and `Monitoring` from the lightweight shell.
+  Those operational statuses do not increment the attention count.
+- Opening a thread acknowledges its current attention signal on that device;
+  merely opening the menu does not.
 - Selecting a row closes the menu and uses the existing adaptive thread
   navigation. It never interrupts, settles, or duplicates the running session.
 - The active thread is excluded from the visible list.
@@ -76,9 +82,9 @@ References:
   survive app restarts. They are not synchronized through a T3 server.
 - Clearing recents hides the launcher until another thread departure. Resetting
   its position returns it to the trailing edge without clearing history.
-- Compact phone layouts show the launcher on Home, thread destinations, and the
-  new-task flow. Split layouts hide it because the persistent thread sidebar
-  already provides peer navigation.
+- Compact phone layouts show the launcher only on thread destinations. Home,
+  the new-task flow, and split layouts hide it because their thread lists
+  already provide peer navigation.
 - Settings, connection, legal, Git confirmation, and other unrelated modal
   flows suppress the launcher.
 
@@ -102,12 +108,13 @@ relay, and tunnel environments cannot collide.
 
 - A small feature-local pure module owns transition, deduplication, capacity,
   persistence sanitization, visibility, and layout math.
-- A root-stack leaf observes route changes and only subscribes to the currently
-  active thread shell. This follows the established mobile performance pattern:
-  shell changes must not rerender the root navigator and every screen.
+- A root-stack leaf observes route changes, the current thread shell, and at
+  most the five scoped shells in visible recent history. It never subscribes
+  to the global thread array or hydrates background messages.
 - A portal-projected visual leaf owns the bubble, menu, and gesture state. The
-  portal receives React updates only for route/menu/history changes, never for
-  per-frame dragging.
+  portal receives route, menu, history, and presentation-changing status
+  updates, never per-frame dragging. Memoization filters shell updates whose
+  projected row status did not change.
 - Existing scoped IDs, shell atoms, deep-link navigation, safe-area provider,
   Gesture Handler, Reanimated, keyboard controller, and theme tokens are reused.
   No production dependency or wire contract is added.
@@ -127,8 +134,9 @@ Performance requirements:
 
 - Gesture updates and transforms stay in Reanimated worklets on the UI thread.
 - No React state, atom, storage, or portal writes occur on animation frames.
-- JavaScript receives only discrete events: open/close, navigation selection,
-  clear/reset, and one normalized-position commit after settling.
+- JavaScript receives only discrete gesture events: open/close, navigation
+  selection, clear/reset, and one normalized-position commit after settling.
+  Shell updates only recompute the bounded row statuses and read cursors.
 - Worklets perform only constant-time clamp and transform arithmetic.
 - The menu renders at most five rows and is unmounted while closed.
 - No idle pulse, bob, timer, continuous repaint, or simultaneously mounted chat
