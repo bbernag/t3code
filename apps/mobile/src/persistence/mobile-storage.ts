@@ -12,11 +12,17 @@ import {
   toStableSavedRemoteConnection,
 } from "../lib/connection";
 import * as MobileSecureStorage from "./mobile-secure-storage";
+import {
+  decodeRecentThreadBubbleSnapshot,
+  encodeRecentThreadBubbleSnapshot,
+  type RecentThreadBubbleSnapshot,
+} from "./recent-thread-bubble";
 
 const CONNECTIONS_KEY = "t3code.connections";
 const AGENT_AWARENESS_DEVICE_ID_KEY = "t3code.agent-awareness.device-id";
 const AGENT_AWARENESS_REGISTRATION_KEY = "t3code.agent-awareness.registration";
 const RECENT_THREAD_SHORTCUTS_KEY = "t3code.recent-thread-shortcuts";
+const RECENT_THREAD_BUBBLE_KEY = "t3code.recent-thread-bubble.v1";
 
 export class MobileStorageDecodeError extends Schema.TaggedErrorClass<MobileStorageDecodeError>()(
   "MobileStorageDecodeError",
@@ -110,6 +116,16 @@ export class MobileStorage extends Context.Service<
     >;
     readonly saveRecentThreadShortcuts: (
       threads: ReadonlyArray<RecentThreadShortcut>,
+    ) => Effect.Effect<
+      void,
+      MobileSecureStorage.MobileSecureStorageError | MobileStorageEncodeError
+    >;
+    readonly loadRecentThreadBubbleSnapshot: Effect.Effect<
+      RecentThreadBubbleSnapshot,
+      MobileSecureStorage.MobileSecureStorageError
+    >;
+    readonly saveRecentThreadBubbleSnapshot: (
+      snapshot: RecentThreadBubbleSnapshot,
     ) => Effect.Effect<
       void,
       MobileSecureStorage.MobileSecureStorageError | MobileStorageEncodeError
@@ -245,6 +261,10 @@ export const make = Effect.fn("MobileStorage.make")(function* () {
     ),
   );
 
+  const loadRecentThreadBubbleSnapshot = readJson<unknown>(RECENT_THREAD_BUBBLE_KEY).pipe(
+    Effect.map(decodeRecentThreadBubbleSnapshot),
+  );
+
   return MobileStorage.of({
     loadSavedConnections,
     saveConnection,
@@ -260,6 +280,9 @@ export const make = Effect.fn("MobileStorage.make")(function* () {
     ),
     loadRecentThreadShortcuts,
     saveRecentThreadShortcuts: (threads) => writeJson(RECENT_THREAD_SHORTCUTS_KEY, { threads }),
+    loadRecentThreadBubbleSnapshot,
+    saveRecentThreadBubbleSnapshot: (snapshot) =>
+      writeJson(RECENT_THREAD_BUBBLE_KEY, encodeRecentThreadBubbleSnapshot(snapshot)),
   });
 });
 

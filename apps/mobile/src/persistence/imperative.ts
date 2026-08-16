@@ -6,6 +6,11 @@ import * as MobileStorage from "./mobile-storage";
 
 export type { Preferences } from "./mobile-preferences";
 export type { AgentAwarenessRegistrationRecord, RecentThreadShortcut } from "./mobile-storage";
+export type {
+  RecentThreadBubbleEntry,
+  RecentThreadBubblePosition,
+  RecentThreadBubbleSnapshot,
+} from "./recent-thread-bubble";
 export { MobilePreferencesLoadError, MobilePreferencesSaveError } from "./mobile-preferences";
 export {
   MobileDeviceIdGenerationError,
@@ -51,3 +56,9 @@ export const loadRecentThreadShortcuts = () =>
 export const saveRecentThreadShortcuts = (
   threads: ReadonlyArray<MobileStorage.RecentThreadShortcut>,
 ) => runStorage((storage) => storage.saveRecentThreadShortcuts(threads));
+
+export const loadRecentThreadBubbleSnapshot = () =>
+  runStorage((storage) => storage.loadRecentThreadBubbleSnapshot);
+export const saveRecentThreadBubbleSnapshot = (
+  snapshot: Parameters<MobileStorage.MobileStorage["Service"]["saveRecentThreadBubbleSnapshot"]>[0],
+) => runStorage((storage) => storage.saveRecentThreadBubbleSnapshot(snapshot));

@@ -8,6 +8,7 @@ import { HttpClient } from "effect/unstable/http";
 
 import type { SavedRemoteConnection } from "../../lib/connection";
 import { MobileStorage } from "../../persistence/mobile-storage";
+import { EMPTY_RECENT_THREAD_BUBBLE_SNAPSHOT } from "../../persistence/recent-thread-bubble";
 import {
   CloudEnvironmentLinkError,
   linkEnvironmentToCloudWithPreference,
@@ -62,6 +63,8 @@ const testLayer = Layer.mergeAll(
       clearAgentAwarenessRegistrationRecord: Effect.void,
       loadRecentThreadShortcuts: Effect.succeed([]),
       saveRecentThreadShortcuts: () => Effect.void,
+      loadRecentThreadBubbleSnapshot: Effect.succeed(EMPTY_RECENT_THREAD_BUBBLE_SNAPSHOT),
+      saveRecentThreadBubbleSnapshot: () => Effect.void,
     }),
   ),
 );

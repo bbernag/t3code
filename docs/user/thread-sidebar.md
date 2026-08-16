@@ -12,6 +12,20 @@ If reordering is unavailable for one environment, update the T3 Code server runn
 environment. Older servers can still pin and unpin threads, but do not understand synced ordering;
 their pinned threads keep the default newest-first order below the ones you have arranged.
 
+## Quick switching on mobile
+
+While a thread is open on a phone-sized iOS or Android screen, a movable chat bubble keeps up to
+five recently left threads within reach. Drag it anywhere while you work; when you release it, the
+bubble follows your push and settles against the left or right side. Press it to open the
+recent-thread menu. Choosing a thread switches to it without stopping any work running in the other
+threads.
+
+The menu excludes the thread already open. Use **Reset position** to return the bubble to its
+default trailing-edge position, or **Clear** to hide it until you leave another thread. Recent
+threads and the bubble position are stored only on that mobile device; they do not sync through a
+T3 environment. The bubble is hidden on the chat list, the new-task screen, and split layouts where
+the thread sidebar is already visible.
+
 ## Environment artwork
 
 Dev and Nightly environments can identify themselves with artwork at the top of the sidebar and in

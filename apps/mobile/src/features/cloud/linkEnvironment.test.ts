@@ -9,6 +9,7 @@ import { remoteHttpClientLayer } from "@t3tools/client-runtime/rpc";
 import { HttpClient } from "effect/unstable/http";
 import { MobilePreferencesStore } from "../../persistence/mobile-preferences";
 import { MobileStorage } from "../../persistence/mobile-storage";
+import { EMPTY_RECENT_THREAD_BUBBLE_SNAPSHOT } from "../../persistence/recent-thread-bubble";
 
 import {
   cloudEnvironmentsPendingStatus,
@@ -96,6 +97,8 @@ function cloudClientLayer() {
         clearAgentAwarenessRegistrationRecord: Effect.void,
         loadRecentThreadShortcuts: Effect.succeed([]),
         saveRecentThreadShortcuts: () => Effect.void,
+        loadRecentThreadBubbleSnapshot: Effect.succeed(EMPTY_RECENT_THREAD_BUBBLE_SNAPSHOT),
+        saveRecentThreadBubbleSnapshot: () => Effect.void,
       }),
     ),
     ManagedRelay.layer({
