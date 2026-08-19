@@ -3,16 +3,20 @@ import type { EdgeInsets } from "react-native-safe-area-context";
 import type { RecentThreadBubblePosition } from "../../persistence/imperative";
 import { DEFAULT_RECENT_THREAD_BUBBLE_POSITION } from "./recentThreads";
 
-export const FLOATING_CHAT_BUBBLE_SIZE = 48;
+// Painted bubble geometry. The bubble views size themselves from these constants
+// so the menu layout math can treat them as ground truth; rem-based utility
+// classes render at the app's 14pt rem and would silently drift from them.
+export const FLOATING_CHAT_BUBBLE_SIZE = 42;
 export const FLOATING_CHAT_BUBBLE_TOUCH_SIZE = 56;
 export const FLOATING_CHAT_BUBBLE_TOUCH_INSET =
   (FLOATING_CHAT_BUBBLE_TOUCH_SIZE - FLOATING_CHAT_BUBBLE_SIZE) / 2;
 export const FLOATING_CHAT_SCREEN_MARGIN = 12;
-export const FLOATING_CHAT_MENU_GAP = 10;
+export const FLOATING_CHAT_MENU_GAP = 7;
 export const FLOATING_CHAT_MENU_MAX_WIDTH = 320;
 const FLOATING_CHAT_RELEASE_PROJECTION_SECONDS = 0.1;
-const FLOATING_CHAT_MENU_HEADER_HEIGHT = 48;
-const FLOATING_CHAT_MENU_ROW_HEIGHT = 64;
+// min-h-12 header and min-h-16 rows at the app's 14pt rem.
+const FLOATING_CHAT_MENU_HEADER_HEIGHT = 42;
+const FLOATING_CHAT_MENU_ROW_HEIGHT = 56;
 
 export type FloatingChatPoint = {
   readonly x: number;
@@ -28,13 +32,27 @@ export type FloatingChatBounds = {
   readonly maxPresentationX: number;
 };
 
-export type FloatingChatMenuLayout = {
+type FloatingChatMenuLayoutBase = {
+  readonly anchorX: number;
   readonly left: number;
-  readonly top: number;
+  readonly gap: number;
   readonly width: number;
   readonly maxHeight: number;
-  readonly opensBelow: boolean;
 };
+
+export type FloatingChatMenuLayout = FloatingChatMenuLayoutBase &
+  (
+    | {
+        readonly bottom?: undefined;
+        readonly opensBelow: true;
+        readonly top: number;
+      }
+    | {
+        readonly bottom: number;
+        readonly opensBelow: false;
+        readonly top?: undefined;
+      }
+  );
 
 export function estimateFloatingChatMenuHeight(threadCount: number): number {
   return (
@@ -125,7 +143,11 @@ export function resolveFloatingChatMenuLayout(input: {
   readonly viewportHeight: number;
   readonly insets: EdgeInsets;
   readonly estimatedHeight: number;
+  readonly gap: number;
 }): FloatingChatMenuLayout {
+  // The gap applies verbatim in both directions on both platforms. iOS clips the
+  // menu surface shadow (overflow hidden on GlassSurface), so any directional
+  // shadow compensation paints as visible asymmetry between the two variants.
   const safeLeft = input.insets.left + FLOATING_CHAT_SCREEN_MARGIN;
   const safeRight = input.viewportWidth - input.insets.right - FLOATING_CHAT_SCREEN_MARGIN;
   const safeTop = input.insets.top + FLOATING_CHAT_SCREEN_MARGIN;
@@ -136,17 +158,47 @@ export function resolveFloatingChatMenuLayout(input: {
     safeLeft,
     Math.max(safeLeft, safeRight - width),
   );
-  const spaceAbove = Math.max(0, input.point.y - FLOATING_CHAT_MENU_GAP - safeTop);
+  const spaceAbove = Math.max(0, input.point.y - input.gap - safeTop);
   const spaceBelow = Math.max(
     0,
-    safeBottom - (input.point.y + FLOATING_CHAT_BUBBLE_SIZE + FLOATING_CHAT_MENU_GAP),
+    safeBottom - (input.point.y + FLOATING_CHAT_BUBBLE_SIZE + input.gap),
   );
   const opensBelow = spaceBelow >= Math.min(input.estimatedHeight, 220) || spaceBelow > spaceAbove;
+  const gap = input.gap;
   const availableHeight = opensBelow ? spaceBelow : spaceAbove;
   const maxHeight = Math.min(input.estimatedHeight, availableHeight);
-  const top = opensBelow
-    ? input.point.y + FLOATING_CHAT_BUBBLE_SIZE + FLOATING_CHAT_MENU_GAP
-    : input.point.y - FLOATING_CHAT_MENU_GAP - maxHeight;
+  const anchorX = clampFloatingChatValue(
+    input.point.x + FLOATING_CHAT_BUBBLE_SIZE / 2 - left,
+    0,
+    width,
+  );
+  const base = { anchorX, gap, left, width, maxHeight };
 
-  return { left, top, width, maxHeight, opensBelow };
+  return opensBelow
+    ? {
+        ...base,
+        opensBelow: true,
+        top: input.point.y + FLOATING_CHAT_BUBBLE_SIZE + gap,
+      }
+    : {
+        ...base,
+        bottom: input.viewportHeight - (input.point.y - gap),
+        opensBelow: false,
+      };
+}
+
+// React Native applies a view's transform matrix about the view center, so the
+// menu's edge pivot must be expressed as an offset from that center. The menu
+// applies translate((1 - scale) * offset) followed by scale, which pins the
+// launcher-adjacent edge at (anchorX, top-or-bottom) while scaling.
+export function resolveFloatingChatMenuScaleOrigin(input: {
+  readonly anchorX: number;
+  readonly height: number;
+  readonly opensBelow: boolean;
+  readonly width: number;
+}): { readonly x: number; readonly y: number } {
+  return {
+    x: input.anchorX - input.width / 2,
+    y: input.opensBelow ? -input.height / 2 : input.height / 2,
+  };
 }

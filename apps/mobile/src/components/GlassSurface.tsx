@@ -16,7 +16,9 @@ interface GlassSurfaceProps extends Omit<ViewProps, "className"> {
   readonly glassEffectStyle?: "clear" | "regular" | "none";
   readonly tintColor?: ColorValue;
   readonly chrome?: "default" | "none";
-  /** Styling used only when native Liquid Glass is unavailable. */
+  /** Render the fallback surface even when Liquid Glass is available. */
+  readonly forceFallback?: boolean;
+  /** Styling used when native Liquid Glass is unavailable or bypassed. */
   readonly fallbackStyle?: StyleProp<ViewStyle>;
 }
 
@@ -25,6 +27,7 @@ export function GlassSurface({
   glassEffectStyle = "regular",
   chrome = "default",
   tintColor,
+  forceFallback = false,
   fallbackStyle,
   style,
   ...props
@@ -33,7 +36,7 @@ export function GlassSurface({
   const borderColor = useThemeColor("--color-border");
   const glassSurface = useThemeColor("--color-glass-surface");
   const glassTint = useThemeColor("--color-glass-tint");
-  const supportsGlass = Platform.OS === "ios" && isGlassEffectAPIAvailable();
+  const supportsGlass = Platform.OS === "ios" && !forceFallback && isGlassEffectAPIAvailable();
   const surfaceStyle: ViewStyle = {
     borderRadius: 32,
     overflow: "hidden",

@@ -23,13 +23,16 @@ clear of the button.
 - The surface then fades and unmounts through the existing menu-presence state.
 - Opening behavior uses the same geometry in reverse, preserving a clear
   relationship between the launcher and menu.
+- The launcher lives on a stable foreground layer so transformed menu content
+  and native shadows cannot cover it during either transition.
 - The launcher remains interactive and visually unchanged. Dragging, docking,
   attention badges, menu layout, and thread selection are outside this fix.
 - Existing system reduced-motion handling remains authoritative.
 
 This creates a geometric invariant: throughout the transition, the menu stays
-on its own side of the launcher-to-menu gap. Correctness therefore does not
-depend on native sibling compositing, z-index, or platform-specific elevation.
+on its own side of the launcher-to-menu gap. A stable launcher layer provides a
+second compositing guarantee without applying z-index to either transformed
+surface.
 
 ## Alternatives considered
 
@@ -56,8 +59,9 @@ animation change.
 `RecentThreadsBubbleMenu` owns the surface transform. Its animated style will
 retain the existing edge-based transform origin, scale, staged content opacity,
 and staged surface opacity, while removing the vertical translation into the
-launcher. Constants and imports that only supported that translation will be
-removed.
+launcher. `FloatingRecentThreadsBubble` will keep the launcher in an
+always-mounted, non-transformed foreground layer. Constants and imports that
+only supported the old translation will be removed.
 
 No contract, persistence, navigation, layout, or shared component changes are
 required.

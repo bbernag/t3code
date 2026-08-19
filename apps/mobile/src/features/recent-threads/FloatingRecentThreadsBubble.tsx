@@ -12,6 +12,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useKeyboardContext } from "react-native-keyboard-controller";
 import Animated, {
   cancelAnimation,
+  Easing,
   ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
@@ -27,7 +28,10 @@ import { OverlayPortal } from "../../components/OverlayPortal";
 import { useThemeColor } from "../../lib/useThemeColor";
 import type { RecentThreadBubblePosition } from "../../persistence/imperative";
 import {
+  FLOATING_CHAT_BUBBLE_SIZE,
   FLOATING_CHAT_BUBBLE_TOUCH_INSET,
+  FLOATING_CHAT_BUBBLE_TOUCH_SIZE,
+  FLOATING_CHAT_MENU_GAP,
   clampFloatingChatValue,
   estimateFloatingChatMenuHeight,
   normalizeFloatingChatPoint,
@@ -41,6 +45,11 @@ import {
   recentThreadsBubbleAccessibilityLabel,
   type RecentThreadBubbleItem,
 } from "./recentThreadAttention";
+import {
+  BubbleMenuPresence,
+  closeBubbleMenu,
+  toggleBubbleMenu,
+} from "./recentThreadsBubbleMenuState";
 
 const POSITION_SPRING = {
   damping: 18,
@@ -59,7 +68,23 @@ const PRESS_TIMING = {
   duration: 90,
   reduceMotion: ReduceMotion.System,
 } as const;
+const MENU_CLOSE_TIMING = {
+  duration: 140,
+  easing: Easing.out(Easing.cubic),
+  reduceMotion: ReduceMotion.System,
+} as const;
+const MENU_BUBBLE_OFFSET = 3;
+const MENU_BUBBLE_SCALE_X = 0.05;
+const MENU_BUBBLE_SCALE_Y = 0.09;
 const ACCESSIBILITY_NUDGE = 52;
+const BUBBLE_TOUCH_TARGET_STYLE = {
+  height: FLOATING_CHAT_BUBBLE_TOUCH_SIZE,
+  width: FLOATING_CHAT_BUBBLE_TOUCH_SIZE,
+} as const;
+const BUBBLE_CIRCLE_STYLE = {
+  height: FLOATING_CHAT_BUBBLE_SIZE,
+  width: FLOATING_CHAT_BUBBLE_SIZE,
+} as const;
 
 type Props = {
   readonly attentionCount: number;
@@ -120,7 +145,9 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
   const insets = useSafeAreaInsets();
   const { height: keyboardHeight } = useKeyboardContext().reanimated;
   const primaryForegroundColor = useThemeColor("--color-primary-foreground");
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPresence, setMenuPresence] = useState(BubbleMenuPresence.Closed);
+  const menuMounted = menuPresence !== BubbleMenuPresence.Closed;
+  const menuOpen = menuPresence === BubbleMenuPresence.Open;
 
   const bounds = useMemo(
     () =>
@@ -143,6 +170,7 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
         viewportHeight: props.height,
         insets,
         estimatedHeight: estimateFloatingChatMenuHeight(props.items.length),
+        gap: FLOATING_CHAT_MENU_GAP,
       }),
     [insets, point, props.height, props.items.length, props.width],
   );
@@ -157,27 +185,51 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
   const tilt = useSharedValue(0);
   const settleVersion = useSharedValue(0);
   const settledAxes = useSharedValue(0);
+  const menuProgress = useSharedValue(0);
 
   useEffect(() => {
     translateX.value = withSpring(point.x, POSITION_SPRING);
     translateY.value = withSpring(point.y, POSITION_SPRING);
   }, [bounds, point, translateX, translateY]);
 
-  useEffect(() => {
-    if (!menuOpen || Platform.OS !== "android") return;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      setMenuOpen(false);
-      return true;
-    });
-    return () => subscription.remove();
-  }, [menuOpen]);
-
-  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const finishMenuClose = useCallback(() => {
+    setMenuPresence((current) =>
+      current === BubbleMenuPresence.Closing ? BubbleMenuPresence.Closed : current,
+    );
+  }, []);
+  const closeMenu = useCallback(() => {
+    setMenuPresence(closeBubbleMenu);
+  }, []);
   const toggleMenu = useCallback(() => {
     Keyboard.dismiss();
     fireSelectionHaptic();
-    setMenuOpen((open) => !open);
+    setMenuPresence(toggleBubbleMenu);
   }, []);
+
+  useEffect(() => {
+    switch (menuPresence) {
+      case BubbleMenuPresence.Closed:
+        menuProgress.value = 0;
+        break;
+      case BubbleMenuPresence.Open:
+        menuProgress.value = withSpring(1, SHAPE_SPRING);
+        break;
+      case BubbleMenuPresence.Closing:
+        menuProgress.value = withTiming(0, MENU_CLOSE_TIMING, (finished) => {
+          if (finished) scheduleOnRN(finishMenuClose);
+        });
+        break;
+    }
+  }, [finishMenuClose, menuPresence, menuProgress]);
+
+  useEffect(() => {
+    if (!menuOpen || Platform.OS !== "android") return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      closeMenu();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [closeMenu, menuOpen]);
   const toggleMenuAtPosition = useCallback(
     (position: RecentThreadBubblePosition) => {
       props.onPositionChange(position);
@@ -336,6 +388,9 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
 
   const bubbleStyle = useAnimatedStyle(() => {
     const visibleMaxY = Math.max(bounds.minY, bounds.maxY - Math.abs(keyboardHeight.value));
+    const boundedMenuProgress = clampFloatingChatValue(menuProgress.value, 0, 1);
+    const menuDeformation = 4 * boundedMenuProgress * (1 - boundedMenuProgress);
+    const menuDirection = menuLayout.opensBelow ? 1 : -1;
     return {
       transform: [
         {
@@ -349,14 +404,19 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
         {
           translateY:
             clampFloatingChatValue(translateY.value, bounds.minY, visibleMaxY) -
-            FLOATING_CHAT_BUBBLE_TOUCH_INSET,
+            FLOATING_CHAT_BUBBLE_TOUCH_INSET +
+            menuDirection * MENU_BUBBLE_OFFSET * menuDeformation,
         },
         { rotateZ: `${tilt.value}deg` },
-        { scaleX: stretchX.value * pressedScale.value },
-        { scaleY: stretchY.value * pressedScale.value },
+        {
+          scaleX: stretchX.value * pressedScale.value * (1 - MENU_BUBBLE_SCALE_X * menuDeformation),
+        },
+        {
+          scaleY: stretchY.value * pressedScale.value * (1 + MENU_BUBBLE_SCALE_Y * menuDeformation),
+        },
       ],
     };
-  }, [bounds, keyboardHeight]);
+  }, [bounds, keyboardHeight, menuLayout.opensBelow]);
 
   const moveForAccessibility = useCallback(
     (horizontalDirection: -1 | 0 | 1, deltaY: number) => {
@@ -393,71 +453,86 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
 
   const handleSelectThread = useCallback(
     (item: RecentThreadBubbleItem) => {
-      setMenuOpen(false);
+      closeMenu();
       fireSelectionHaptic();
       props.onSelectThread(item);
     },
-    [props.onSelectThread],
+    [closeMenu, props.onSelectThread],
   );
 
   return (
     <OverlayPortal>
       <View className="absolute inset-0" pointerEvents="box-none">
-        {menuOpen ? (
+        {menuMounted ? (
           <Pressable
             accessibilityElementsHidden
-            className="absolute inset-0 z-[1]"
+            className="absolute inset-0"
             importantForAccessibility="no-hide-descendants"
             onPress={closeMenu}
           />
         ) : null}
-        {menuOpen ? (
-          <RecentThreadsBubbleMenu
-            items={props.items}
-            layout={menuLayout}
-            onClose={closeMenu}
-            onSelectThread={handleSelectThread}
-          />
-        ) : null}
-        <GestureDetector gesture={gesture}>
-          <Animated.View
-            accessible
-            accessibilityActions={[
-              { name: "moveLeft", label: "Move left" },
-              { name: "moveRight", label: "Move right" },
-              { name: "moveUp", label: "Move up" },
-              { name: "moveDown", label: "Move down" },
-            ]}
-            accessibilityHint="Double tap to show recent chats, or drag to move"
-            accessibilityLabel={recentThreadsBubbleAccessibilityLabel(props.attentionCount)}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: menuOpen }}
-            className="absolute left-0 top-0 z-[3] size-14 items-center justify-center"
-            onAccessibilityAction={handleAccessibilityAction}
-            onAccessibilityTap={toggleMenu}
-            style={bubbleStyle}
+        {menuMounted ? (
+          <View
+            accessibilityElementsHidden={!menuOpen}
+            className="absolute inset-0"
+            collapsable={false}
+            importantForAccessibility={menuOpen ? "auto" : "no-hide-descendants"}
+            pointerEvents={menuOpen ? "box-none" : "none"}
+            style={{ alignItems: "flex-start" }}
           >
-            <View className="h-12 w-12 items-center justify-center rounded-full bg-primary shadow-lg">
-              <SymbolView
-                name="text.bubble"
-                size={22}
-                tintColor={primaryForegroundColor}
-                type="monochrome"
-                weight="semibold"
-              />
-              {props.attentionCount > 0 ? (
-                <View
-                  className="absolute -right-0.5 -top-[3px] h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-primary bg-card px-0.5"
-                  pointerEvents="none"
-                >
-                  <Text className="text-[10px] font-t3-bold leading-3 text-foreground">
-                    {props.attentionCount}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-          </Animated.View>
-        </GestureDetector>
+            <RecentThreadsBubbleMenu
+              items={props.items}
+              layout={menuLayout}
+              progress={menuProgress}
+              onClose={closeMenu}
+              onSelectThread={handleSelectThread}
+            />
+          </View>
+        ) : null}
+        <View collapsable={false} className="absolute inset-0 z-[1]" pointerEvents="box-none">
+          <GestureDetector gesture={gesture}>
+            <Animated.View
+              accessible
+              accessibilityActions={[
+                { name: "moveLeft", label: "Move left" },
+                { name: "moveRight", label: "Move right" },
+                { name: "moveUp", label: "Move up" },
+                { name: "moveDown", label: "Move down" },
+              ]}
+              accessibilityHint="Double tap to show recent chats, or drag to move"
+              accessibilityLabel={recentThreadsBubbleAccessibilityLabel(props.attentionCount)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: menuOpen }}
+              className="absolute left-0 top-0 items-center justify-center"
+              onAccessibilityAction={handleAccessibilityAction}
+              onAccessibilityTap={toggleMenu}
+              style={[BUBBLE_TOUCH_TARGET_STYLE, bubbleStyle]}
+            >
+              <View
+                className="items-center justify-center rounded-full bg-primary shadow-lg"
+                style={BUBBLE_CIRCLE_STYLE}
+              >
+                <SymbolView
+                  name="text.bubble"
+                  size={22}
+                  tintColor={primaryForegroundColor}
+                  type="monochrome"
+                  weight="semibold"
+                />
+                {props.attentionCount > 0 ? (
+                  <View
+                    className="absolute -right-0.5 -top-[3px] h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-primary bg-card px-0.5"
+                    pointerEvents="none"
+                  >
+                    <Text className="text-[10px] font-t3-bold leading-3 text-foreground">
+                      {props.attentionCount}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            </Animated.View>
+          </GestureDetector>
+        </View>
       </View>
     </OverlayPortal>
   );

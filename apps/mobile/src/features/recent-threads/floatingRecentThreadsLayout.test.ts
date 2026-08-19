@@ -4,10 +4,12 @@ import {
   estimateFloatingChatMenuHeight,
   FLOATING_CHAT_BUBBLE_SIZE,
   FLOATING_CHAT_BUBBLE_TOUCH_SIZE,
+  FLOATING_CHAT_MENU_GAP,
   normalizeFloatingChatPoint,
   projectFloatingChatRelease,
   resolveFloatingChatBounds,
   resolveFloatingChatMenuLayout,
+  resolveFloatingChatMenuScaleOrigin,
   resolveFloatingChatPoint,
 } from "./floatingRecentThreadsLayout";
 
@@ -15,12 +17,12 @@ const insets = { top: 44, right: 0, bottom: 34, left: 0 };
 
 describe("floating recent chats layout", () => {
   it("keeps a smaller visual bubble inside an accessible interaction target", () => {
-    expect(FLOATING_CHAT_BUBBLE_SIZE).toBe(48);
+    expect(FLOATING_CHAT_BUBBLE_SIZE).toBe(42);
     expect(FLOATING_CHAT_BUBBLE_TOUCH_SIZE).toBe(56);
   });
 
   it("estimates the bounded menu from its visible rows", () => {
-    expect(estimateFloatingChatMenuHeight(5)).toBe(368);
+    expect(estimateFloatingChatMenuHeight(5)).toBe(322);
   });
 
   it("round-trips docked positions inside safe bounds", () => {
@@ -71,10 +73,11 @@ describe("floating recent chats layout", () => {
       viewportHeight: 390,
       insets: landscapeInsets,
       estimatedHeight: 220,
+      gap: FLOATING_CHAT_MENU_GAP,
     });
 
     expect(bounds.minX).toBe(56);
-    expect(bounds.maxX).toBe(740);
+    expect(bounds.maxX).toBe(746);
     expect(menu.left).toBeGreaterThanOrEqual(56);
     expect(menu.left + menu.width).toBeLessThanOrEqual(788);
   });
@@ -144,6 +147,7 @@ describe("floating recent chats layout", () => {
       viewportHeight: 844,
       insets,
       estimatedHeight: 360,
+      gap: FLOATING_CHAT_MENU_GAP,
     });
     const lower = resolveFloatingChatMenuLayout({
       point: { x: 20, y: 730 },
@@ -151,11 +155,134 @@ describe("floating recent chats layout", () => {
       viewportHeight: 844,
       insets,
       estimatedHeight: 360,
+      gap: FLOATING_CHAT_MENU_GAP,
     });
 
     expect(upper.opensBelow).toBe(true);
+    expect(upper.anchorX).toBe(299);
     expect(upper.left + upper.width).toBeLessThanOrEqual(378);
+    expect(upper.gap).toBe(FLOATING_CHAT_MENU_GAP);
+    expect(upper.top).toBe(80 + FLOATING_CHAT_BUBBLE_SIZE + FLOATING_CHAT_MENU_GAP);
+    expect(upper.bottom).toBeUndefined();
     expect(lower.opensBelow).toBe(false);
-    expect(lower.top).toBeGreaterThanOrEqual(insets.top + 12);
+    expect(lower.anchorX).toBe(29);
+    expect(lower.top).toBeUndefined();
+    expect(lower.gap).toBe(FLOATING_CHAT_MENU_GAP);
+    expect(lower.bottom).toBe(844 - (730 - FLOATING_CHAT_MENU_GAP));
+  });
+
+  it("keeps below-menu spacing independent of row count and estimated height", () => {
+    for (const x of [20, 310]) {
+      for (const threadCount of [1, 3, 5]) {
+        const point = { x, y: 80 };
+        const menu = resolveFloatingChatMenuLayout({
+          point,
+          viewportWidth: 390,
+          viewportHeight: 844,
+          insets,
+          estimatedHeight: estimateFloatingChatMenuHeight(threadCount),
+          gap: FLOATING_CHAT_MENU_GAP,
+        });
+
+        expect(menu.opensBelow).toBe(true);
+        if (!menu.opensBelow) throw new Error("Expected menu to open below the bubble");
+        expect(menu.gap).toBe(FLOATING_CHAT_MENU_GAP);
+        expect(menu.top - (point.y + FLOATING_CHAT_BUBBLE_SIZE)).toBe(FLOATING_CHAT_MENU_GAP);
+      }
+    }
+  });
+
+  it("keeps above-menu spacing independent of row count and estimated height", () => {
+    for (const x of [20, 310]) {
+      for (const threadCount of [1, 3, 5]) {
+        const menu = resolveFloatingChatMenuLayout({
+          point: { x, y: 730 },
+          viewportWidth: 390,
+          viewportHeight: 844,
+          insets,
+          estimatedHeight: estimateFloatingChatMenuHeight(threadCount),
+          gap: FLOATING_CHAT_MENU_GAP,
+        });
+
+        expect(menu.opensBelow).toBe(false);
+        if (menu.opensBelow) throw new Error("Expected menu to open above the bubble");
+        expect(menu.gap).toBe(FLOATING_CHAT_MENU_GAP);
+        expect(menu.bottom).toBe(844 - (730 - FLOATING_CHAT_MENU_GAP));
+        expect(730 - (844 - menu.bottom)).toBe(FLOATING_CHAT_MENU_GAP);
+      }
+    }
+  });
+
+  it("paints the same bubble-to-menu gap in both directions", () => {
+    expect(FLOATING_CHAT_MENU_GAP).toBe(7);
+
+    const upperBubble = resolveFloatingChatMenuLayout({
+      point: { x: 310, y: 80 },
+      viewportWidth: 390,
+      viewportHeight: 844,
+      insets,
+      estimatedHeight: estimateFloatingChatMenuHeight(3),
+      gap: FLOATING_CHAT_MENU_GAP,
+    });
+    const lowerBubble = resolveFloatingChatMenuLayout({
+      point: { x: 310, y: 730 },
+      viewportWidth: 390,
+      viewportHeight: 844,
+      insets,
+      estimatedHeight: estimateFloatingChatMenuHeight(3),
+      gap: FLOATING_CHAT_MENU_GAP,
+    });
+
+    expect(upperBubble.opensBelow).toBe(true);
+    if (!upperBubble.opensBelow) throw new Error("Expected menu to open below the bubble");
+    expect(lowerBubble.opensBelow).toBe(false);
+    if (lowerBubble.opensBelow) throw new Error("Expected menu to open above the bubble");
+
+    const paintedGapBelowBubble = upperBubble.top - (80 + FLOATING_CHAT_BUBBLE_SIZE);
+    const paintedGapAboveBubble = 730 - (844 - lowerBubble.bottom);
+    expect(paintedGapBelowBubble).toBe(paintedGapAboveBubble);
+  });
+
+  it("pins the menu scale pivot against the nearest edge under center-based transforms", () => {
+    const upper = resolveFloatingChatMenuLayout({
+      point: { x: 310, y: 80 },
+      viewportWidth: 390,
+      viewportHeight: 844,
+      insets,
+      estimatedHeight: 360,
+      gap: FLOATING_CHAT_MENU_GAP,
+    });
+    const lower = resolveFloatingChatMenuLayout({
+      point: { x: 20, y: 730 },
+      viewportWidth: 390,
+      viewportHeight: 844,
+      insets,
+      estimatedHeight: 360,
+      gap: FLOATING_CHAT_MENU_GAP,
+    });
+    const height = 266;
+
+    const upperOrigin = resolveFloatingChatMenuScaleOrigin({
+      anchorX: upper.anchorX,
+      height,
+      opensBelow: upper.opensBelow,
+      width: upper.width,
+    });
+    const lowerOrigin = resolveFloatingChatMenuScaleOrigin({
+      anchorX: lower.anchorX,
+      height,
+      opensBelow: lower.opensBelow,
+      width: lower.width,
+    });
+
+    expect(upperOrigin).toEqual({ x: 139, y: -133 });
+    expect(lowerOrigin).toEqual({ x: -131, y: 133 });
+
+    // The menu's translate-then-scale transform fixes the point center + offset,
+    // which must land on the anchor point of the launcher-adjacent edge.
+    expect(upperOrigin.x + upper.width / 2).toBe(upper.anchorX);
+    expect(upperOrigin.y + height / 2).toBe(0);
+    expect(lowerOrigin.x + lower.width / 2).toBe(lower.anchorX);
+    expect(lowerOrigin.y + height / 2).toBe(height);
   });
 });
