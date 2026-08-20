@@ -3,17 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useWindowDimensions } from "react-native";
 
 import { deriveLayout } from "../../lib/layout";
-import {
-  loadRecentThreadBubbleSnapshot,
-  saveRecentThreadBubbleSnapshot,
-  type RecentThreadBubbleEntry,
-  type RecentThreadBubblePosition,
-  type RecentThreadBubbleSnapshot,
-} from "../../persistence/imperative";
-import { EMPTY_RECENT_THREAD_BUBBLE_SNAPSHOT } from "../../persistence/recent-thread-bubble";
-import { useProject, useProjects, useThreadShell, useThreadShells } from "../../state/entities";
+import type { RecentThreadBubbleEntry } from "../../persistence/imperative";
+import { useProject, useThreadShell } from "../../state/entities";
 import { parseActiveThreadPath } from "../keyboard/hardwareKeyboardCommands";
 import { FloatingRecentThreadsBubble } from "./FloatingRecentThreadsBubble";
+import { LiveThreadRecorder } from "./LiveThreadRecorder";
 import {
   countRecentThreadsNeedingAttention,
   isRecentThreadAttentionStatus,
@@ -23,245 +17,24 @@ import {
   resolveRecentThreadAcknowledgementBaseline,
   resolveRecentThreadAttentionSignal,
   resolveRecentThreadLiveActivity,
-  resolveRecentThreadLiveStatus,
   resolveRecentThreadStatus,
   shouldSummonRecentThreadsBubble,
   type RecentThreadBubbleItem,
 } from "./recentThreadAttention";
 import {
-  acknowledgeRecentThread,
-  acknowledgeRecentThreads,
   departedThreadFromTransition,
-  hydrateRecentThreadSnapshot,
-  initializeRecentThreadAcknowledgements,
   isRecentThreadsBubbleRoute,
   isSameRecentThread,
-  observeWorkingRecentThreads,
   recentThreadKey,
-  recordDepartedThread,
-  recordDepartedThreads,
-  refreshRecentThreadMetadata,
-  shouldPersistRecentThreadSnapshot,
   type RecentThreadAcknowledgement,
-  type RecentThreadHydrationChanges,
-  type RecentThreadHydrationStatus,
-  type RecentThreadRef,
-  type RecentThreadWorkingObservation,
   visibleRecentThreads,
 } from "./recentThreads";
+import { useRecentThreadBubbleSnapshot } from "./useRecentThreadBubbleSnapshot";
 import { useRecentThreadShells } from "./useRecentThreadShells";
 
-type SnapshotMutation = "position" | "threadsMerge";
-const POSITION_EQUALITY_EPSILON = 0.0001;
 const EMPTY_RECENT_THREADS: ReadonlyArray<RecentThreadBubbleEntry> = [];
 const EMPTY_THREAD_KEYS: ReadonlySet<string> = new Set();
 const EMPTY_MUTED_ACTIVITIES: ReadonlyMap<string, string> = new Map();
-
-function samePosition(
-  left: RecentThreadBubblePosition | null,
-  right: RecentThreadBubblePosition | null,
-): boolean {
-  return (
-    left === right ||
-    (left !== null &&
-      right !== null &&
-      Math.abs(left.x - right.x) < POSITION_EQUALITY_EPSILON &&
-      Math.abs(left.y - right.y) < POSITION_EQUALITY_EPSILON)
-  );
-}
-
-function useRecentThreadBubbleSnapshot() {
-  const [snapshot, setSnapshot] = useState<RecentThreadBubbleSnapshot>(
-    EMPTY_RECENT_THREAD_BUBBLE_SNAPSHOT,
-  );
-  const snapshotRef = useRef(snapshot);
-  const hydrationStatusRef = useRef<RecentThreadHydrationStatus>("loading");
-  const changedBeforeHydrationRef = useRef<RecentThreadHydrationChanges>({
-    position: false,
-    threads: "unchanged",
-  });
-  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-
-  const enqueueSave = useCallback((next: RecentThreadBubbleSnapshot) => {
-    saveQueueRef.current = saveQueueRef.current
-      .catch(() => undefined)
-      .then(() => saveRecentThreadBubbleSnapshot(next))
-      .catch((error) => {
-        console.warn("[recent-threads-bubble] failed to save state", error);
-      });
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void loadRecentThreadBubbleSnapshot()
-      .then((persisted) => {
-        if (cancelled) return;
-        hydrationStatusRef.current = "loaded";
-        const changed = changedBeforeHydrationRef.current;
-        const current = snapshotRef.current;
-        const hydrated = hydrateRecentThreadSnapshot({ current, persisted, changes: changed });
-        snapshotRef.current = hydrated;
-        setSnapshot(hydrated);
-        if (changed.threads !== "unchanged" || changed.position) {
-          enqueueSave(hydrated);
-        }
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        console.warn("[recent-threads-bubble] failed to load state", error);
-        hydrationStatusRef.current = "failed";
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [enqueueSave]);
-
-  const commit = useCallback(
-    (
-      mutation: SnapshotMutation,
-      transform: (current: RecentThreadBubbleSnapshot) => RecentThreadBubbleSnapshot,
-    ) => {
-      const current = snapshotRef.current;
-      const next = transform(current);
-      const status = hydrationStatusRef.current;
-      if (status === "loading") {
-        if (mutation === "position") {
-          changedBeforeHydrationRef.current = {
-            ...changedBeforeHydrationRef.current,
-            position: true,
-          };
-        } else if (changedBeforeHydrationRef.current.threads === "unchanged") {
-          changedBeforeHydrationRef.current = {
-            ...changedBeforeHydrationRef.current,
-            threads: "merge",
-          };
-        }
-      }
-      if (next === current) return;
-      snapshotRef.current = next;
-      setSnapshot(next);
-
-      if (shouldPersistRecentThreadSnapshot(status)) {
-        enqueueSave(next);
-      }
-    },
-    [enqueueSave],
-  );
-
-  const recordThread = useCallback(
-    (thread: RecentThreadBubbleEntry) => {
-      commit("threadsMerge", (current) => {
-        const threads = recordDepartedThread(current.threads, thread);
-        return threads === current.threads ? current : { ...current, threads };
-      });
-    },
-    [commit],
-  );
-  const recordWorkingThreads = useCallback(
-    (observation: RecentThreadWorkingObservation) => {
-      commit("threadsMerge", (current) => {
-        const recorded = recordDepartedThreads(current.threads, observation.newlyWorkingThreads);
-        const threads = refreshRecentThreadMetadata(recorded, observation.workingThreads);
-        return threads === current.threads ? current : { ...current, threads };
-      });
-    },
-    [commit],
-  );
-  const acknowledgeThread = useCallback(
-    (thread: RecentThreadRef, acknowledgedAt: string) => {
-      commit("threadsMerge", (current) => {
-        const threads = acknowledgeRecentThread(current.threads, thread, acknowledgedAt);
-        return threads === current.threads ? current : { ...current, threads };
-      });
-    },
-    [commit],
-  );
-  const acknowledgeThreads = useCallback(
-    (acknowledgements: ReadonlyArray<RecentThreadAcknowledgement>) => {
-      if (acknowledgements.length === 0) return;
-      commit("threadsMerge", (current) => {
-        const threads = acknowledgeRecentThreads(current.threads, acknowledgements);
-        return threads === current.threads ? current : { ...current, threads };
-      });
-    },
-    [commit],
-  );
-  const initializeAcknowledgements = useCallback(
-    (acknowledgements: ReadonlyArray<RecentThreadAcknowledgement>) => {
-      commit("threadsMerge", (current) => {
-        const threads = initializeRecentThreadAcknowledgements(current.threads, acknowledgements);
-        return threads === current.threads ? current : { ...current, threads };
-      });
-    },
-    [commit],
-  );
-  const setPosition = useCallback(
-    (position: RecentThreadBubblePosition) => {
-      commit("position", (current) =>
-        samePosition(current.position, position) ? current : { ...current, position },
-      );
-    },
-    [commit],
-  );
-
-  return {
-    snapshot,
-    acknowledgeThread,
-    acknowledgeThreads,
-    initializeAcknowledgements,
-    recordThread,
-    recordWorkingThreads,
-    setPosition,
-  };
-}
-
-// Mounted only on bubble routes so the app-wide shell subscription it needs
-// never runs elsewhere. Chats actively working anywhere — including ones
-// started from desktop or web — enter the recent list so the bubble can
-// surface them now and flag their completions later through the normal
-// acknowledgement pipeline. Passive monitoring threads are not imported.
-function LiveThreadRecorder(props: {
-  readonly activeThread: RecentThreadRef | null;
-  readonly onObserveWorkingThreads: (observation: RecentThreadWorkingObservation) => void;
-  readonly previousWorkingThreadKeysRef: { current: ReadonlySet<string> };
-}) {
-  const projects = useProjects();
-  const threadShells = useThreadShells();
-
-  useEffect(() => {
-    const projectTitles = new Map(
-      projects.map((project) => [`${project.environmentId}:${project.id}`, project.title]),
-    );
-    const workingThreads = threadShells.flatMap((shell): RecentThreadBubbleEntry[] => {
-      if (shell.archivedAt !== null || resolveRecentThreadLiveStatus(shell) !== "working")
-        return [];
-      return [
-        {
-          environmentId: String(shell.environmentId),
-          threadId: String(shell.id),
-          title: shell.title,
-          projectTitle: projectTitles.get(`${shell.environmentId}:${shell.projectId}`) ?? "",
-          lastAcknowledgedAt: null,
-        },
-      ];
-    });
-    const observation = observeWorkingRecentThreads({
-      activeThread: props.activeThread,
-      previousWorkingThreadKeys: props.previousWorkingThreadKeysRef.current,
-      workingThreads,
-    });
-    props.previousWorkingThreadKeysRef.current = observation.workingThreadKeys;
-    props.onObserveWorkingThreads(observation);
-  }, [
-    projects,
-    props.activeThread,
-    props.onObserveWorkingThreads,
-    props.previousWorkingThreadKeysRef,
-    threadShells,
-  ]);
-
-  return null;
-}
 
 export function RecentThreadsBubbleHost(props: {
   readonly topRouteName: string | null;
