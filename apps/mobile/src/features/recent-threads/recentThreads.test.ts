@@ -8,7 +8,9 @@ import {
   initializeRecentThreadAcknowledgements,
   isRecentThreadsBubbleRoute,
   mergeRecentThreads,
+  observeWorkingRecentThreads,
   recordDepartedThread,
+  recordDepartedThreads,
   visibleRecentThreads,
 } from "./recentThreads";
 
@@ -111,6 +113,37 @@ describe("recent thread history", () => {
       thread("d"),
     ]);
     expect(recordDepartedThread([thread("same", "one")], thread("same", "two"))).toHaveLength(2);
+  });
+
+  it("records an overflow of working threads once instead of rotating stored slots", () => {
+    const workingThreads = ["a", "b", "c", "d", "e", "f"].map((threadId) => thread(threadId));
+    const firstObservation = observeWorkingRecentThreads({
+      activeThread: null,
+      previousWorkingThreadKeys: new Set(),
+      workingThreads,
+    });
+    const stored = recordDepartedThreads([], firstObservation.newlyWorkingThreads);
+    const repeatedObservation = observeWorkingRecentThreads({
+      activeThread: null,
+      previousWorkingThreadKeys: firstObservation.workingThreadKeys,
+      workingThreads,
+    });
+
+    expect(stored.map((entry) => entry.threadId)).toEqual(["f", "e", "d", "c", "b"]);
+    expect(repeatedObservation.newlyWorkingThreads).toEqual([]);
+    expect(recordDepartedThreads(stored, repeatedObservation.newlyWorkingThreads)).toBe(stored);
+  });
+
+  it("observes the active thread's working edge without adding it to recents", () => {
+    const active = thread("active");
+    const observation = observeWorkingRecentThreads({
+      activeThread: active,
+      previousWorkingThreadKeys: new Set(),
+      workingThreads: [active, thread("background")],
+    });
+
+    expect(observation.newlyWorkingThreads).toEqual([thread("background")]);
+    expect(observation.workingThreadKeys).toContain("environment-1:active");
   });
 
   it("merges departures that happened while persisted history was loading", () => {

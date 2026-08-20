@@ -14,6 +14,10 @@ export type RecentThreadAcknowledgement = {
   readonly thread: RecentThreadRef;
   readonly acknowledgedAt: string;
 };
+export type RecentThreadWorkingObservation = {
+  readonly newlyWorkingThreads: ReadonlyArray<RecentThreadBubbleEntry>;
+  readonly workingThreadKeys: ReadonlySet<string>;
+};
 
 const BUBBLE_ROUTES = new Set([
   "Thread",
@@ -101,6 +105,31 @@ export function recordDepartedThread(
   )
     ? threads
     : next;
+}
+
+export function recordDepartedThreads(
+  threads: ReadonlyArray<RecentThreadBubbleEntry>,
+  departedThreads: ReadonlyArray<RecentThreadBubbleEntry>,
+): ReadonlyArray<RecentThreadBubbleEntry> {
+  let next = threads;
+  for (const departed of departedThreads) {
+    next = recordDepartedThread(next, departed);
+  }
+  return next;
+}
+
+export function observeWorkingRecentThreads(input: {
+  readonly activeThread: RecentThreadRef | null;
+  readonly previousWorkingThreadKeys: ReadonlySet<string>;
+  readonly workingThreads: ReadonlyArray<RecentThreadBubbleEntry>;
+}): RecentThreadWorkingObservation {
+  const workingThreadKeys = new Set(input.workingThreads.map(recentThreadKey));
+  const newlyWorkingThreads = input.workingThreads.filter(
+    (thread) =>
+      !input.previousWorkingThreadKeys.has(recentThreadKey(thread)) &&
+      !isSameRecentThread(thread, input.activeThread),
+  );
+  return { newlyWorkingThreads, workingThreadKeys };
 }
 
 export function acknowledgeRecentThread(

@@ -33,8 +33,10 @@ import {
   initializeRecentThreadAcknowledgements,
   isRecentThreadsBubbleRoute,
   isSameRecentThread,
+  observeWorkingRecentThreads,
   recentThreadKey,
   recordDepartedThread,
+  recordDepartedThreads,
   type RecentThreadAcknowledgement,
   type RecentThreadHydrationChanges,
   type RecentThreadRef,
@@ -152,6 +154,16 @@ function useRecentThreadBubbleSnapshot() {
     },
     [commit],
   );
+  const recordThreads = useCallback(
+    (recordedThreads: ReadonlyArray<RecentThreadBubbleEntry>) => {
+      if (recordedThreads.length === 0) return;
+      commit("threadsMerge", (current) => {
+        const threads = recordDepartedThreads(current.threads, recordedThreads);
+        return threads === current.threads ? current : { ...current, threads };
+      });
+    },
+    [commit],
+  );
   const acknowledgeThread = useCallback(
     (thread: RecentThreadRef, acknowledgedAt: string) => {
       commit("threadsMerge", (current) => {
@@ -184,6 +196,7 @@ function useRecentThreadBubbleSnapshot() {
     acknowledgeThread,
     initializeAcknowledgements,
     recordThread,
+    recordThreads,
     setPosition,
   };
 }
@@ -194,31 +207,38 @@ function useRecentThreadBubbleSnapshot() {
 // surface them now and flag their completions later through the normal
 // acknowledgement pipeline. Passive monitoring threads are not imported.
 function LiveThreadRecorder(props: {
-  readonly storedThreads: ReadonlyArray<RecentThreadBubbleEntry>;
-  readonly onRecordThread: (entry: RecentThreadBubbleEntry) => void;
+  readonly activeThread: RecentThreadRef | null;
+  readonly onRecordThreads: (entries: ReadonlyArray<RecentThreadBubbleEntry>) => void;
 }) {
   const projects = useProjects();
   const threadShells = useThreadShells();
+  const previousWorkingThreadKeysRef = useRef<ReadonlySet<string>>(EMPTY_MUTED_KEYS);
 
   useEffect(() => {
     const projectTitles = new Map(
       projects.map((project) => [`${project.environmentId}:${project.id}`, project.title]),
     );
-    for (const shell of threadShells) {
-      if (shell.archivedAt !== null) continue;
-      if (resolveRecentThreadLiveStatus(shell) !== "working") continue;
-      const entry: RecentThreadBubbleEntry = {
-        environmentId: String(shell.environmentId),
-        threadId: String(shell.id),
-        title: shell.title,
-        projectTitle: projectTitles.get(`${shell.environmentId}:${shell.projectId}`) ?? "",
-        lastAcknowledgedAt: null,
-      };
-      const existing = props.storedThreads.find((thread) => isSameRecentThread(thread, entry));
-      if (existing !== undefined && existing.title === entry.title) continue;
-      props.onRecordThread(entry);
-    }
-  }, [projects, props.onRecordThread, props.storedThreads, threadShells]);
+    const workingThreads = threadShells.flatMap((shell): RecentThreadBubbleEntry[] => {
+      if (shell.archivedAt !== null || resolveRecentThreadLiveStatus(shell) !== "working")
+        return [];
+      return [
+        {
+          environmentId: String(shell.environmentId),
+          threadId: String(shell.id),
+          title: shell.title,
+          projectTitle: projectTitles.get(`${shell.environmentId}:${shell.projectId}`) ?? "",
+          lastAcknowledgedAt: null,
+        },
+      ];
+    });
+    const observation = observeWorkingRecentThreads({
+      activeThread: props.activeThread,
+      previousWorkingThreadKeys: previousWorkingThreadKeysRef.current,
+      workingThreads,
+    });
+    previousWorkingThreadKeysRef.current = observation.workingThreadKeys;
+    props.onRecordThreads(observation.newlyWorkingThreads);
+  }, [projects, props.activeThread, props.onRecordThreads, threadShells]);
 
   return null;
 }
@@ -229,8 +249,14 @@ export function RecentThreadsBubbleHost(props: {
 }) {
   const navigation = useNavigation();
   const { width, height } = useWindowDimensions();
-  const { snapshot, acknowledgeThread, initializeAcknowledgements, recordThread, setPosition } =
-    useRecentThreadBubbleSnapshot();
+  const {
+    snapshot,
+    acknowledgeThread,
+    initializeAcknowledgements,
+    recordThread,
+    recordThreads,
+    setPosition,
+  } = useRecentThreadBubbleSnapshot();
   const activeThreadRef = useMemo(
     () =>
       props.topRouteName === "NewTaskSheet" ? null : parseActiveThreadPath(props.workspacePathname),
@@ -379,7 +405,7 @@ export function RecentThreadsBubbleHost(props: {
   return (
     <>
       {routeSupportsBubble ? (
-        <LiveThreadRecorder storedThreads={snapshot.threads} onRecordThread={recordThread} />
+        <LiveThreadRecorder activeThread={activeThreadRef} onRecordThreads={recordThreads} />
       ) : null}
       {visible ? (
         <FloatingRecentThreadsBubble
