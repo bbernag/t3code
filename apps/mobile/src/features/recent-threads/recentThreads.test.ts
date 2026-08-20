@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { RecentThreadBubbleEntry } from "../../persistence/imperative";
 import {
   acknowledgeRecentThread,
+  acknowledgeRecentThreads,
   departedThreadFromTransition,
   hydrateRecentThreadSnapshot,
   initializeRecentThreadAcknowledgements,
@@ -75,6 +76,22 @@ describe("recent thread history", () => {
         "2026-08-16T11:00:00.000Z",
       ),
     ).toBe(acknowledged);
+  });
+
+  it("acknowledges multiple chats in one history update", () => {
+    const threads = [thread("a"), thread("b")];
+    const acknowledgedAt = "2026-08-16T12:00:00.000Z";
+    const acknowledgements = threads.map((entry) => ({
+      thread: entry,
+      acknowledgedAt,
+    }));
+
+    const acknowledged = acknowledgeRecentThreads(threads, acknowledgements);
+    expect(acknowledged).toEqual([
+      thread("a", "environment-1", "Thread a", acknowledgedAt),
+      thread("b", "environment-1", "Thread b", acknowledgedAt),
+    ]);
+    expect(acknowledgeRecentThreads(acknowledged, acknowledgements)).toBe(acknowledged);
   });
 
   it("initializes only missing acknowledgement cursors", () => {

@@ -30,6 +30,7 @@ import {
 } from "./recentThreadAttention";
 import {
   acknowledgeRecentThread,
+  acknowledgeRecentThreads,
   departedThreadFromTransition,
   hydrateRecentThreadSnapshot,
   initializeRecentThreadAcknowledgements,
@@ -173,6 +174,16 @@ function useRecentThreadBubbleSnapshot() {
     },
     [commit],
   );
+  const acknowledgeThreads = useCallback(
+    (acknowledgements: ReadonlyArray<RecentThreadAcknowledgement>) => {
+      if (acknowledgements.length === 0) return;
+      commit("threadsMerge", (current) => {
+        const threads = acknowledgeRecentThreads(current.threads, acknowledgements);
+        return threads === current.threads ? current : { ...current, threads };
+      });
+    },
+    [commit],
+  );
   const initializeAcknowledgements = useCallback(
     (acknowledgements: ReadonlyArray<RecentThreadAcknowledgement>) => {
       commit("threadsMerge", (current) => {
@@ -194,6 +205,7 @@ function useRecentThreadBubbleSnapshot() {
   return {
     snapshot,
     acknowledgeThread,
+    acknowledgeThreads,
     initializeAcknowledgements,
     recordThread,
     recordThreads,
@@ -252,6 +264,7 @@ export function RecentThreadsBubbleHost(props: {
   const {
     snapshot,
     acknowledgeThread,
+    acknowledgeThreads,
     initializeAcknowledgements,
     recordThread,
     recordThreads,
@@ -350,14 +363,19 @@ export function RecentThreadsBubbleHost(props: {
       pruneRecentThreadLiveActivityMutes({ items, knownThreadKeys, mutes: current }),
     );
   }, [items, knownThreadKeys]);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
   const handleDismiss = useCallback(() => {
-    for (const item of items) {
+    const currentItems = itemsRef.current;
+    const acknowledgements: RecentThreadAcknowledgement[] = [];
+    for (const item of currentItems) {
       if (isRecentThreadAttentionStatus(item.status) && item.attentionOccurredAt !== null) {
-        acknowledgeThread(item.thread, item.attentionOccurredAt);
+        acknowledgements.push({ thread: item.thread, acknowledgedAt: item.attentionOccurredAt });
       }
     }
-    setMutedLiveActivities(recentThreadLiveActivityMutes(items));
-  }, [acknowledgeThread, items]);
+    acknowledgeThreads(acknowledgements);
+    setMutedLiveActivities(recentThreadLiveActivityMutes(currentItems));
+  }, [acknowledgeThreads]);
   const activeAttentionSignal = useMemo(
     () =>
       activeThreadShell === null ? null : resolveRecentThreadAttentionSignal(activeThreadShell),

@@ -159,6 +159,17 @@ export function acknowledgeRecentThread(
   return next;
 }
 
+export function acknowledgeRecentThreads(
+  threads: ReadonlyArray<RecentThreadBubbleEntry>,
+  acknowledgements: ReadonlyArray<RecentThreadAcknowledgement>,
+): ReadonlyArray<RecentThreadBubbleEntry> {
+  let next = threads;
+  for (const acknowledgement of acknowledgements) {
+    next = acknowledgeRecentThread(next, acknowledgement.thread, acknowledgement.acknowledgedAt);
+  }
+  return next;
+}
+
 export function initializeRecentThreadAcknowledgements(
   threads: ReadonlyArray<RecentThreadBubbleEntry>,
   acknowledgements: ReadonlyArray<RecentThreadAcknowledgement>,
