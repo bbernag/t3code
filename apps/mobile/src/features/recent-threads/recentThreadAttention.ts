@@ -1,6 +1,7 @@
 import type { OrchestrationLatestTurn, OrchestrationSession } from "@t3tools/contracts";
 
 import type { RecentThreadBubbleEntry } from "../../persistence/imperative";
+import { recentThreadKey } from "./recentThreads";
 
 export type RecentThreadAttentionKind = "approval" | "input" | "completed";
 export type RecentThreadOperationalStatusKind = "working" | "monitoring";
@@ -71,6 +72,21 @@ export function resolveRecentThreadAcknowledgementBaseline(
   return timestampValue(shell.updatedAt) === null ? null : shell.updatedAt;
 }
 
+/** Live right now: the agent is working or monitoring, regardless of acknowledgements. */
+export function resolveRecentThreadLiveStatus(
+  shell: RecentThreadStatusShell,
+): RecentThreadOperationalStatusKind | null {
+  if (
+    shell.session?.status === "starting" ||
+    shell.session?.status === "running" ||
+    shell.latestTurn?.state === "running" ||
+    shell.backgroundLiveness === "working"
+  ) {
+    return "working";
+  }
+  return shell.backgroundLiveness === "monitoring" ? "monitoring" : null;
+}
+
 export function resolveRecentThreadStatus(
   shell: RecentThreadStatusShell | null,
   lastAcknowledgedAt: string | null,
@@ -82,15 +98,8 @@ export function resolveRecentThreadStatus(
     return isRecentThreadSignalUnseen(attention, lastAcknowledgedAt) ? attention.kind : null;
   }
 
-  if (
-    shell.session?.status === "starting" ||
-    shell.session?.status === "running" ||
-    shell.latestTurn?.state === "running" ||
-    shell.backgroundLiveness === "working"
-  ) {
-    return "working";
-  }
-  if (shell.backgroundLiveness === "monitoring") return "monitoring";
+  const live = resolveRecentThreadLiveStatus(shell);
+  if (live !== null) return live;
   return attention !== null && isRecentThreadSignalUnseen(attention, lastAcknowledgedAt)
     ? "completed"
     : null;
@@ -100,6 +109,38 @@ export function isRecentThreadAttentionStatus(
   status: RecentThreadStatusKind | null,
 ): status is RecentThreadAttentionKind {
   return status === "approval" || status === "input" || status === "completed";
+}
+
+/**
+ * The bubble summons for attention, or for active work the user has not
+ * dismissed away; passive monitoring alone stays quiet. Muted keys come from
+ * drag-to-dismiss and clear once the muted chat settles.
+ */
+export function shouldSummonRecentThreadsBubble(
+  items: ReadonlyArray<RecentThreadBubbleItem>,
+  mutedLiveThreadKeys: ReadonlySet<string>,
+): boolean {
+  return items.some(
+    (item) =>
+      isRecentThreadAttentionStatus(item.status) ||
+      (item.status === "working" && !mutedLiveThreadKeys.has(recentThreadKey(item.thread))),
+  );
+}
+
+/** Keys of chats whose live status a dismissal should mute until they settle. */
+export function recentThreadLiveKeys(items: ReadonlyArray<RecentThreadBubbleItem>): Set<string> {
+  return new Set(
+    items
+      .filter((item) => item.status === "working" || item.status === "monitoring")
+      .map((item) => recentThreadKey(item.thread)),
+  );
+}
+
+/** Menu rows: only chats with a live status; quiet history stays stored but hidden. */
+export function recentThreadItemsWithActivity(
+  items: ReadonlyArray<RecentThreadBubbleItem>,
+): ReadonlyArray<RecentThreadBubbleItem> {
+  return items.filter((item) => item.status !== null);
 }
 
 export function countRecentThreadsNeedingAttention(
@@ -113,6 +154,6 @@ export function countRecentThreadsNeedingAttention(
 }
 
 export function recentThreadsBubbleAccessibilityLabel(attentionCount: number): string {
-  if (attentionCount <= 0) return "Recent chats";
-  return `Recent chats, ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} attention`;
+  if (attentionCount <= 0) return "Recent activity";
+  return `Recent activity, ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} attention`;
 }

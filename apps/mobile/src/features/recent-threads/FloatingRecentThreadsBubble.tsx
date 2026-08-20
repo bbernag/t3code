@@ -1,5 +1,5 @@
 import * as Haptics from "expo-haptics";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BackHandler,
   Keyboard,
@@ -16,8 +16,11 @@ import Animated, {
   ReduceMotion,
   useAnimatedStyle,
   useSharedValue,
+  withSequence,
   withSpring,
   withTiming,
+  ZoomIn,
+  ZoomOut,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scheduleOnRN } from "react-native-worklets";
@@ -31,12 +34,15 @@ import {
   FLOATING_CHAT_BUBBLE_SIZE,
   FLOATING_CHAT_BUBBLE_TOUCH_INSET,
   FLOATING_CHAT_BUBBLE_TOUCH_SIZE,
+  FLOATING_CHAT_DISMISS_TARGET_SIZE,
   FLOATING_CHAT_MENU_GAP,
   clampFloatingChatValue,
   estimateFloatingChatMenuHeight,
+  isFloatingChatDismissCaptured,
   normalizeFloatingChatPoint,
   projectFloatingChatRelease,
   resolveFloatingChatBounds,
+  resolveFloatingChatDismissTarget,
   resolveFloatingChatMenuLayout,
   resolveFloatingChatPoint,
 } from "./floatingRecentThreadsLayout";
@@ -76,6 +82,15 @@ const MENU_CLOSE_TIMING = {
 const MENU_BUBBLE_OFFSET = 3;
 const MENU_BUBBLE_SCALE_X = 0.05;
 const MENU_BUBBLE_SCALE_Y = 0.09;
+// Pop in on the same spring as the press bounce so every appearance shares
+// the bubble's physical feel; the exit stays quick and bounce-free.
+const POP_IN = ZoomIn.springify()
+  .damping(SHAPE_SPRING.damping)
+  .mass(SHAPE_SPRING.mass)
+  .stiffness(SHAPE_SPRING.stiffness)
+  .reduceMotion(ReduceMotion.System);
+const POP_OUT = ZoomOut.duration(120).reduceMotion(ReduceMotion.System);
+const BADGE_POP_SCALE = 1.2;
 const ACCESSIBILITY_NUDGE = 52;
 const BUBBLE_TOUCH_TARGET_STYLE = {
   height: FLOATING_CHAT_BUBBLE_TOUCH_SIZE,
@@ -85,6 +100,11 @@ const BUBBLE_CIRCLE_STYLE = {
   height: FLOATING_CHAT_BUBBLE_SIZE,
   width: FLOATING_CHAT_BUBBLE_SIZE,
 } as const;
+const DISMISS_TARGET_STYLE = {
+  height: FLOATING_CHAT_DISMISS_TARGET_SIZE,
+  width: FLOATING_CHAT_DISMISS_TARGET_SIZE,
+} as const;
+const DISMISS_TARGET_CAPTURED_SCALE = 1.15;
 
 type Props = {
   readonly attentionCount: number;
@@ -92,6 +112,7 @@ type Props = {
   readonly items: ReadonlyArray<RecentThreadBubbleItem>;
   readonly position: RecentThreadBubblePosition | null;
   readonly width: number;
+  readonly onDismiss: () => void;
   readonly onPositionChange: (position: RecentThreadBubblePosition) => void;
   readonly onSelectThread: (item: RecentThreadBubbleItem) => void;
 };
@@ -126,6 +147,7 @@ function arePropsEqual(previous: Props, next: Props): boolean {
     previous.position?.x === next.position?.x &&
     previous.position?.y === next.position?.y &&
     previous.width === next.width &&
+    previous.onDismiss === next.onDismiss &&
     previous.onPositionChange === next.onPositionChange &&
     previous.onSelectThread === next.onSelectThread
   );
@@ -145,6 +167,9 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
   const insets = useSafeAreaInsets();
   const { height: keyboardHeight } = useKeyboardContext().reanimated;
   const primaryForegroundColor = useThemeColor("--color-primary-foreground");
+  const foregroundColor = useThemeColor("--color-foreground");
+  const viewportWidth = props.width;
+  const viewportHeight = props.height;
   const [menuPresence, setMenuPresence] = useState(BubbleMenuPresence.Closed);
   const menuMounted = menuPresence !== BubbleMenuPresence.Closed;
   const menuOpen = menuPresence === BubbleMenuPresence.Open;
@@ -186,6 +211,28 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
   const settleVersion = useSharedValue(0);
   const settledAxes = useSharedValue(0);
   const menuProgress = useSharedValue(0);
+  const dismissUiProgress = useSharedValue(0);
+  const dismissCaptured = useSharedValue(0);
+  const dismissTargetScale = useSharedValue(1);
+  const attentionBadgeScale = useSharedValue(1);
+  const previousAttentionCountRef = useRef(props.attentionCount);
+
+  // Appearances pop in via the badge's entering animation; a count change on
+  // an already-visible badge gets a quick pump that springs back to rest.
+  useEffect(() => {
+    const previous = previousAttentionCountRef.current;
+    previousAttentionCountRef.current = props.attentionCount;
+    if (props.attentionCount > 0 && previous > 0 && props.attentionCount !== previous) {
+      attentionBadgeScale.value = withSequence(
+        withTiming(BADGE_POP_SCALE, PRESS_TIMING),
+        withSpring(1, SHAPE_SPRING),
+      );
+    }
+  }, [attentionBadgeScale, props.attentionCount]);
+
+  const attentionBadgeStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: attentionBadgeScale.value }],
+  }));
 
   useEffect(() => {
     translateX.value = withSpring(point.x, POSITION_SPRING);
@@ -237,6 +284,10 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
     },
     [props.onPositionChange, toggleMenu],
   );
+  const commitDismiss = useCallback(() => {
+    fireSettleHaptic();
+    props.onDismiss();
+  }, [props.onDismiss]);
   const commitSettledPosition = useCallback(
     (position: RecentThreadBubblePosition) => {
       fireSettleHaptic();
@@ -252,6 +303,9 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
       stretchX.value = withSpring(1, SHAPE_SPRING);
       stretchY.value = withSpring(1, SHAPE_SPRING);
       tilt.value = withSpring(0, SHAPE_SPRING);
+      dismissUiProgress.value = withTiming(0, PRESS_TIMING);
+      dismissCaptured.value = 0;
+      dismissTargetScale.value = withSpring(1, SHAPE_SPRING);
     };
 
     const pan = Gesture.Pan()
@@ -272,24 +326,67 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
         pressedScale.value = withTiming(0.96, PRESS_TIMING);
         scheduleOnRN(closeMenu);
       })
+      .onStart(() => {
+        dismissUiProgress.value = withSpring(1, SHAPE_SPRING);
+      })
       .onUpdate((event) => {
         const visibleMaxY = Math.max(bounds.minY, bounds.maxY - Math.abs(keyboardHeight.value));
-        translateX.value = clampFloatingChatValue(
-          dragStartX.value + event.translationX,
-          bounds.minPresentationX,
-          bounds.maxPresentationX,
-        );
-        translateY.value = clampFloatingChatValue(
-          dragStartY.value + event.translationY,
-          bounds.minY,
-          visibleMaxY,
-        );
+        const candidate = {
+          x: clampFloatingChatValue(
+            dragStartX.value + event.translationX,
+            bounds.minPresentationX,
+            bounds.maxPresentationX,
+          ),
+          y: clampFloatingChatValue(
+            dragStartY.value + event.translationY,
+            bounds.minY,
+            visibleMaxY,
+          ),
+        };
+        // The magnet tracks the finger-projected position, so dragging out of
+        // the capture radius releases the bubble back to the touch point.
+        const dismissTarget = resolveFloatingChatDismissTarget({
+          viewportWidth,
+          viewportHeight,
+          insets,
+          keyboardHeight: keyboardHeight.value,
+        });
+        const captured = isFloatingChatDismissCaptured({ point: candidate, target: dismissTarget });
+        if (captured !== (dismissCaptured.value === 1)) {
+          dismissCaptured.value = captured ? 1 : 0;
+          dismissTargetScale.value = withSpring(
+            captured ? DISMISS_TARGET_CAPTURED_SCALE : 1,
+            SHAPE_SPRING,
+          );
+          if (captured) {
+            translateX.value = withSpring(
+              dismissTarget.x - FLOATING_CHAT_BUBBLE_SIZE / 2,
+              SHAPE_SPRING,
+            );
+            translateY.value = withSpring(
+              dismissTarget.y - FLOATING_CHAT_BUBBLE_SIZE / 2,
+              SHAPE_SPRING,
+            );
+            stretchX.value = withSpring(1, SHAPE_SPRING);
+            stretchY.value = withSpring(1, SHAPE_SPRING);
+            tilt.value = withSpring(0, SHAPE_SPRING);
+            scheduleOnRN(fireSelectionHaptic);
+          }
+        }
+        if (dismissCaptured.value === 1) return;
+        translateX.value = candidate.x;
+        translateY.value = candidate.y;
         const speed = Math.min(1_800, Math.hypot(event.velocityX, event.velocityY));
         stretchX.value = 1 + speed / 18_000;
         stretchY.value = 1 - speed / 28_000;
         tilt.value = clampFloatingChatValue(event.velocityX / 240, -6, 6);
       })
       .onEnd((event) => {
+        if (dismissCaptured.value === 1) {
+          dismissCaptured.value = 0;
+          scheduleOnRN(commitDismiss);
+          return;
+        }
         const target = projectFloatingChatRelease({
           point: { x: translateX.value, y: translateY.value },
           velocityX: event.velocityX,
@@ -371,9 +468,14 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
   }, [
     bounds,
     closeMenu,
+    commitDismiss,
     commitSettledPosition,
+    dismissCaptured,
+    dismissTargetScale,
+    dismissUiProgress,
     dragStartX,
     dragStartY,
+    insets,
     keyboardHeight,
     pressedScale,
     settledAxes,
@@ -384,6 +486,8 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
     toggleMenuAtPosition,
     translateX,
     translateY,
+    viewportHeight,
+    viewportWidth,
   ]);
 
   const bubbleStyle = useAnimatedStyle(() => {
@@ -418,6 +522,23 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
     };
   }, [bounds, keyboardHeight, menuLayout.opensBelow]);
 
+  const dismissTargetStyle = useAnimatedStyle(() => {
+    const target = resolveFloatingChatDismissTarget({
+      viewportWidth,
+      viewportHeight,
+      insets,
+      keyboardHeight: keyboardHeight.value,
+    });
+    return {
+      opacity: clampFloatingChatValue(dismissUiProgress.value, 0, 1),
+      transform: [
+        { translateX: target.x - FLOATING_CHAT_DISMISS_TARGET_SIZE / 2 },
+        { translateY: target.y - FLOATING_CHAT_DISMISS_TARGET_SIZE / 2 },
+        { scale: (0.6 + 0.4 * dismissUiProgress.value) * dismissTargetScale.value },
+      ],
+    };
+  }, [insets, keyboardHeight, viewportHeight, viewportWidth]);
+
   const moveForAccessibility = useCallback(
     (horizontalDirection: -1 | 0 | 1, deltaY: number) => {
       const current = resolveFloatingChatPoint(props.position, bounds);
@@ -446,9 +567,12 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
         case "moveDown":
           moveForAccessibility(0, ACCESSIBILITY_NUDGE);
           break;
+        case "dismiss":
+          commitDismiss();
+          break;
       }
     },
-    [moveForAccessibility],
+    [commitDismiss, moveForAccessibility],
   );
 
   const handleSelectThread = useCallback(
@@ -489,6 +613,19 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
             />
           </View>
         ) : null}
+        <Animated.View
+          className="absolute left-0 top-0 items-center justify-center rounded-full border border-border bg-card shadow-lg"
+          pointerEvents="none"
+          style={[DISMISS_TARGET_STYLE, dismissTargetStyle]}
+        >
+          <SymbolView
+            name="xmark"
+            size={22}
+            tintColor={foregroundColor}
+            type="monochrome"
+            weight="semibold"
+          />
+        </Animated.View>
         <View collapsable={false} className="absolute inset-0 z-[1]" pointerEvents="box-none">
           <GestureDetector gesture={gesture}>
             <Animated.View
@@ -498,8 +635,9 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
                 { name: "moveRight", label: "Move right" },
                 { name: "moveUp", label: "Move up" },
                 { name: "moveDown", label: "Move down" },
+                { name: "dismiss", label: "Dismiss until new activity" },
               ]}
-              accessibilityHint="Double tap to show recent chats, or drag to move"
+              accessibilityHint="Double tap to show recent activity, or drag to move"
               accessibilityLabel={recentThreadsBubbleAccessibilityLabel(props.attentionCount)}
               accessibilityRole="button"
               accessibilityState={{ expanded: menuOpen }}
@@ -508,8 +646,10 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
               onAccessibilityTap={toggleMenu}
               style={[BUBBLE_TOUCH_TARGET_STYLE, bubbleStyle]}
             >
-              <View
+              <Animated.View
                 className="items-center justify-center rounded-full bg-primary shadow-lg"
+                entering={POP_IN}
+                exiting={POP_OUT}
                 style={BUBBLE_CIRCLE_STYLE}
               >
                 <SymbolView
@@ -520,16 +660,19 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
                   weight="semibold"
                 />
                 {props.attentionCount > 0 ? (
-                  <View
+                  <Animated.View
                     className="absolute -right-0.5 -top-[3px] h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-primary bg-card px-0.5"
+                    entering={POP_IN}
+                    exiting={POP_OUT}
                     pointerEvents="none"
+                    style={attentionBadgeStyle}
                   >
                     <Text className="text-[10px] font-t3-bold leading-3 text-foreground">
                       {props.attentionCount}
                     </Text>
-                  </View>
+                  </Animated.View>
                 ) : null}
-              </View>
+              </Animated.View>
             </Animated.View>
           </GestureDetector>
         </View>

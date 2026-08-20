@@ -4,10 +4,15 @@ import {
   estimateFloatingChatMenuHeight,
   FLOATING_CHAT_BUBBLE_SIZE,
   FLOATING_CHAT_BUBBLE_TOUCH_SIZE,
+  FLOATING_CHAT_DISMISS_CAPTURE_RADIUS,
+  FLOATING_CHAT_DISMISS_TARGET_MARGIN,
+  FLOATING_CHAT_DISMISS_TARGET_SIZE,
   FLOATING_CHAT_MENU_GAP,
+  isFloatingChatDismissCaptured,
   normalizeFloatingChatPoint,
   projectFloatingChatRelease,
   resolveFloatingChatBounds,
+  resolveFloatingChatDismissTarget,
   resolveFloatingChatMenuLayout,
   resolveFloatingChatMenuScaleOrigin,
   resolveFloatingChatPoint,
@@ -241,6 +246,53 @@ describe("floating recent chats layout", () => {
     const paintedGapBelowBubble = upperBubble.top - (80 + FLOATING_CHAT_BUBBLE_SIZE);
     const paintedGapAboveBubble = 730 - (844 - lowerBubble.bottom);
     expect(paintedGapBelowBubble).toBe(paintedGapAboveBubble);
+  });
+
+  it("anchors the dismiss target above the safe area and the keyboard", () => {
+    const resting = resolveFloatingChatDismissTarget({
+      viewportWidth: 390,
+      viewportHeight: 844,
+      insets,
+    });
+    const lifted = resolveFloatingChatDismissTarget({
+      viewportWidth: 390,
+      viewportHeight: 844,
+      insets,
+      keyboardHeight: 280,
+    });
+
+    expect(resting.x).toBe(195);
+    expect(resting.y).toBe(
+      844 -
+        insets.bottom -
+        FLOATING_CHAT_DISMISS_TARGET_MARGIN -
+        FLOATING_CHAT_DISMISS_TARGET_SIZE / 2,
+    );
+    expect(lifted.y).toBe(
+      844 - 280 - FLOATING_CHAT_DISMISS_TARGET_MARGIN - FLOATING_CHAT_DISMISS_TARGET_SIZE / 2,
+    );
+  });
+
+  it("captures the bubble by its center inside the dismiss radius", () => {
+    const target = { x: 195, y: 758 };
+    const centered = {
+      x: target.x - FLOATING_CHAT_BUBBLE_SIZE / 2,
+      y: target.y - FLOATING_CHAT_BUBBLE_SIZE / 2,
+    };
+
+    expect(isFloatingChatDismissCaptured({ point: centered, target })).toBe(true);
+    expect(
+      isFloatingChatDismissCaptured({
+        point: { ...centered, y: centered.y - FLOATING_CHAT_DISMISS_CAPTURE_RADIUS },
+        target,
+      }),
+    ).toBe(true);
+    expect(
+      isFloatingChatDismissCaptured({
+        point: { ...centered, y: centered.y - FLOATING_CHAT_DISMISS_CAPTURE_RADIUS - 1 },
+        target,
+      }),
+    ).toBe(false);
   });
 
   it("pins the menu scale pivot against the nearest edge under center-based transforms", () => {

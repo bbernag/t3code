@@ -11,14 +11,19 @@ import {
   type RecentThreadBubbleSnapshot,
 } from "../../persistence/imperative";
 import { EMPTY_RECENT_THREAD_BUBBLE_SNAPSHOT } from "../../persistence/recent-thread-bubble";
-import { useProject, useThreadShell } from "../../state/entities";
+import { useProject, useProjects, useThreadShell, useThreadShells } from "../../state/entities";
 import { parseActiveThreadPath } from "../keyboard/hardwareKeyboardCommands";
 import { FloatingRecentThreadsBubble } from "./FloatingRecentThreadsBubble";
 import {
   countRecentThreadsNeedingAttention,
+  isRecentThreadAttentionStatus,
+  recentThreadItemsWithActivity,
+  recentThreadLiveKeys,
   resolveRecentThreadAcknowledgementBaseline,
   resolveRecentThreadAttentionSignal,
+  resolveRecentThreadLiveStatus,
   resolveRecentThreadStatus,
+  shouldSummonRecentThreadsBubble,
   type RecentThreadBubbleItem,
 } from "./recentThreadAttention";
 import {
@@ -41,6 +46,7 @@ type SnapshotMutation = "position" | "threadsMerge";
 type HydrationStatus = "failed" | "loaded" | "loading";
 const POSITION_EQUALITY_EPSILON = 0.0001;
 const EMPTY_RECENT_THREADS: ReadonlyArray<RecentThreadBubbleEntry> = [];
+const EMPTY_MUTED_KEYS: ReadonlySet<string> = new Set();
 
 function samePosition(
   left: RecentThreadBubblePosition | null,
@@ -182,6 +188,41 @@ function useRecentThreadBubbleSnapshot() {
   };
 }
 
+// Mounted only on bubble routes so the app-wide shell subscription it needs
+// never runs elsewhere. Chats actively working anywhere — including ones
+// started from desktop or web — enter the recent list so the bubble can
+// surface them now and flag their completions later through the normal
+// acknowledgement pipeline. Passive monitoring threads are not imported.
+function LiveThreadRecorder(props: {
+  readonly storedThreads: ReadonlyArray<RecentThreadBubbleEntry>;
+  readonly onRecordThread: (entry: RecentThreadBubbleEntry) => void;
+}) {
+  const projects = useProjects();
+  const threadShells = useThreadShells();
+
+  useEffect(() => {
+    const projectTitles = new Map(
+      projects.map((project) => [`${project.environmentId}:${project.id}`, project.title]),
+    );
+    for (const shell of threadShells) {
+      if (shell.archivedAt !== null) continue;
+      if (resolveRecentThreadLiveStatus(shell) !== "working") continue;
+      const entry: RecentThreadBubbleEntry = {
+        environmentId: String(shell.environmentId),
+        threadId: String(shell.id),
+        title: shell.title,
+        projectTitle: projectTitles.get(`${shell.environmentId}:${shell.projectId}`) ?? "",
+        lastAcknowledgedAt: null,
+      };
+      const existing = props.storedThreads.find((thread) => isSameRecentThread(thread, entry));
+      if (existing !== undefined && existing.title === entry.title) continue;
+      props.onRecordThread(entry);
+    }
+  }, [projects, props.onRecordThread, props.storedThreads, threadShells]);
+
+  return null;
+}
+
 export function RecentThreadsBubbleHost(props: {
   readonly topRouteName: string | null;
   readonly workspacePathname: string;
@@ -261,7 +302,29 @@ export function RecentThreadsBubbleHost(props: {
       }),
     [recentShells, visibleThreads],
   );
+  const menuItems = useMemo(() => recentThreadItemsWithActivity(items), [items]);
   const attentionCount = useMemo(() => countRecentThreadsNeedingAttention(items), [items]);
+
+  // Drag-to-dismiss mutes the chats that were live at dismissal; the mute is
+  // session-local and clears per chat once it settles, so its next run or its
+  // completion summons the bubble again.
+  const [mutedLiveThreads, setMutedLiveThreads] = useState<ReadonlySet<string>>(EMPTY_MUTED_KEYS);
+  useEffect(() => {
+    setMutedLiveThreads((current) => {
+      if (current.size === 0) return current;
+      const liveKeys = recentThreadLiveKeys(items);
+      const next = new Set([...current].filter((key) => liveKeys.has(key)));
+      return next.size === current.size ? current : next;
+    });
+  }, [items]);
+  const handleDismiss = useCallback(() => {
+    for (const item of items) {
+      if (isRecentThreadAttentionStatus(item.status) && item.attentionOccurredAt !== null) {
+        acknowledgeThread(item.thread, item.attentionOccurredAt);
+      }
+    }
+    setMutedLiveThreads(recentThreadLiveKeys(items));
+  }, [acknowledgeThread, items]);
   const activeAttentionSignal = useMemo(
     () =>
       activeThreadShell === null ? null : resolveRecentThreadAttentionSignal(activeThreadShell),
@@ -293,7 +356,11 @@ export function RecentThreadsBubbleHost(props: {
     }
   }, [initializeAcknowledgements, observedThreads, recentShells]);
 
-  const visible = visibleThreads.length > 0 && routeSupportsBubble;
+  // The bubble surfaces while any chat is actively working or needs the user
+  // (approval, input, or an unseen completion). Passive monitoring, quiet
+  // history, and dismissed live chats keep it hidden.
+  const visible =
+    routeSupportsBubble && shouldSummonRecentThreadsBubble(menuItems, mutedLiveThreads);
 
   const handleSelectThread = useCallback(
     (item: RecentThreadBubbleItem) => {
@@ -309,19 +376,23 @@ export function RecentThreadsBubbleHost(props: {
     [acknowledgeThread, navigation],
   );
 
-  if (!visible) {
-    return null;
-  }
-
   return (
-    <FloatingRecentThreadsBubble
-      height={height}
-      attentionCount={attentionCount}
-      items={items}
-      position={snapshot.position}
-      width={width}
-      onPositionChange={setPosition}
-      onSelectThread={handleSelectThread}
-    />
+    <>
+      {routeSupportsBubble ? (
+        <LiveThreadRecorder storedThreads={snapshot.threads} onRecordThread={recordThread} />
+      ) : null}
+      {visible ? (
+        <FloatingRecentThreadsBubble
+          height={height}
+          attentionCount={attentionCount}
+          items={menuItems}
+          position={snapshot.position}
+          width={width}
+          onDismiss={handleDismiss}
+          onPositionChange={setPosition}
+          onSelectThread={handleSelectThread}
+        />
+      ) : null}
+    </>
   );
 }

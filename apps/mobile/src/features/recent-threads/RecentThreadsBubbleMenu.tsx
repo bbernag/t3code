@@ -173,7 +173,7 @@ export function RecentThreadsBubbleMenu(props: {
               showsVerticalScrollIndicator={false}
             >
               <View className="min-h-12 flex-row items-center justify-between px-4 py-2.5">
-                <Text className="text-sm font-t3-bold text-foreground">Recent chats</Text>
+                <Text className="text-sm font-t3-bold text-foreground">Recent activity</Text>
                 <Text className="text-xs text-foreground-muted">{props.items.length}</Text>
               </View>
               {props.items.map((item, index) => {

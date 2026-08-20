@@ -14,21 +14,31 @@ their pinned threads keep the default newest-first order below the ones you have
 
 ## Quick switching on mobile
 
-While a thread is open on a phone-sized iOS or Android screen, a movable chat bubble keeps up to
-five recently left threads within reach. Drag it anywhere while you work; when you release it, the
-bubble follows your push and settles against the left or right side. Press it to open the
-recent-thread menu. Choosing a thread switches to it without stopping any work running in the other
-threads.
+While a thread is open on a phone-sized iOS or Android screen, a movable chat bubble appears when
+another chat is running or needs your attention — a pending approval, an input request, or work
+that finished while you were elsewhere. Chats you start on other devices count too: kick off a
+task from the desktop app and the bubble surfaces it on your phone while it runs. Drag the bubble
+anywhere while you work; when you release it, it follows your push and settles against the left or
+right side. Press it to open the **Recent activity** menu. Choosing a chat switches to it without
+stopping any work running in the other chats.
 
-The number on the bubble counts recent chats with unseen work that needs attention, not every chat
-in the menu. Rows show **Approval**, **Input**, or **Done** when a chat needs you, and **Working** or
-**Monitoring** while another agent is still active. Working and monitoring chats do not increase
-the number. Opening the menu leaves these indicators intact; opening a specific chat marks its
-attention as seen on that device.
+The menu lists chats with something happening — up to five. Rows show **Approval**, **Input**, or
+**Done** when a chat needs you, and **Working** or **Monitoring** while another agent is still
+active; chats with nothing going on stay out of the menu. The number on the bubble counts only the
+chats that need you — working and monitoring chats do not increase it. Opening the menu leaves
+these indicators intact; opening a specific chat marks its attention as seen on that device. Once
+nothing is running and nothing needs you, the bubble goes away until the next chat wants your
+attention.
+
+To put the bubble away, drag it toward the bottom of the screen: an **X** appears, pulls the
+bubble in when you get close, and dropping it there dismisses it. Dismissing marks everything
+currently shown as seen and quiets the chats that are still running — anything new, like a fresh
+approval request, a chat finishing, or a newly started chat, brings the bubble back. Screen-reader
+users can pick the **Dismiss until new activity** action on the bubble instead.
 
 The menu excludes the thread already open. Recent threads and the bubble position are stored only
-on that mobile device; they do not sync through a T3 environment. The bubble is hidden on the chat
-list, the new-task screen, and split layouts where the thread sidebar is already visible.
+on that mobile device; they do not sync through a T3 environment. The bubble also stays hidden on
+the chat list, the new-task screen, and split layouts where the thread sidebar is already visible.
 
 ## Environment artwork
 

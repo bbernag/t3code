@@ -13,6 +13,9 @@ export const FLOATING_CHAT_BUBBLE_TOUCH_INSET =
 export const FLOATING_CHAT_SCREEN_MARGIN = 12;
 export const FLOATING_CHAT_MENU_GAP = 7;
 export const FLOATING_CHAT_MENU_MAX_WIDTH = 320;
+export const FLOATING_CHAT_DISMISS_TARGET_SIZE = 56;
+export const FLOATING_CHAT_DISMISS_TARGET_MARGIN = 24;
+export const FLOATING_CHAT_DISMISS_CAPTURE_RADIUS = 80;
 const FLOATING_CHAT_RELEASE_PROJECTION_SECONDS = 0.1;
 // min-h-12 header and min-h-16 rows at the app's 14pt rem.
 const FLOATING_CHAT_MENU_HEADER_HEIGHT = 42;
@@ -185,6 +188,40 @@ export function resolveFloatingChatMenuLayout(input: {
         bottom: input.viewportHeight - (input.point.y - gap),
         opensBelow: false,
       };
+}
+
+// Center of the drag-to-dismiss target: bottom-center, lifted above the safe
+// area and any open keyboard so the bubble can always reach it.
+export function resolveFloatingChatDismissTarget(input: {
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly insets: EdgeInsets;
+  readonly keyboardHeight?: number;
+}): FloatingChatPoint {
+  "worklet";
+  const bottomLimit = Math.min(
+    input.viewportHeight - input.insets.bottom,
+    input.viewportHeight - Math.abs(input.keyboardHeight ?? 0),
+  );
+  return {
+    x: input.viewportWidth / 2,
+    y: bottomLimit - FLOATING_CHAT_DISMISS_TARGET_MARGIN - FLOATING_CHAT_DISMISS_TARGET_SIZE / 2,
+  };
+}
+
+// The magnet captures on the bubble's center, not the touch point, so the
+// grab-offset never changes how close the bubble must get.
+export function isFloatingChatDismissCaptured(input: {
+  readonly point: FloatingChatPoint;
+  readonly target: FloatingChatPoint;
+}): boolean {
+  "worklet";
+  const centerX = input.point.x + FLOATING_CHAT_BUBBLE_SIZE / 2;
+  const centerY = input.point.y + FLOATING_CHAT_BUBBLE_SIZE / 2;
+  return (
+    Math.hypot(centerX - input.target.x, centerY - input.target.y) <=
+    FLOATING_CHAT_DISMISS_CAPTURE_RADIUS
+  );
 }
 
 // React Native applies a view's transform matrix about the view center, so the
