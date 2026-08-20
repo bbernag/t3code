@@ -2,9 +2,9 @@
 
 ## Purpose
 
-T3 Code users often move among several active threads and need to return to the
-previous ones quickly. Searching the complete thread list is unnecessarily
-expensive for that short navigation loop.
+T3 Code users often keep several agents working at once and need to notice when
+an off-screen thread starts, finishes, or needs a response. Searching the
+complete thread list is unnecessarily expensive for that attention loop.
 
 The feature is split into two phases:
 
@@ -65,14 +65,24 @@ References:
 
 - One floating bubble represents a bounded list of recent threads; the app does
   not render one bubble per thread.
-- The bubble appears after the user leaves the first canonical server thread.
-- Pressing it opens up to five recent threads in most-recently-left order.
+- The bubble appears only while an off-screen recent thread is actively working
+  or carries unseen approval, input, or completed-turn attention. Passive
+  monitoring and quiet history do not summon it.
+- Pressing it opens up to five recent threads that currently have activity.
+  Quiet entries remain in the bounded history but do not render menu rows.
+- While the user is on a supported compact thread route, a route-gated recorder
+  observes lightweight shells and imports threads that enter active work in any
+  connected environment, including work started from desktop or web.
 - Its numeric badge counts recent off-screen threads with unseen approval,
   input, or completed-turn signals rather than the number of menu rows.
 - Menu rows also project `Working` and `Monitoring` from the lightweight shell.
   Those operational statuses do not increment the attention count.
 - Opening a thread acknowledges its current attention signal on that device;
   merely opening the menu does not.
+- Dragging the bubble into its dismiss target acknowledges the attention
+  currently shown and mutes each exact live run in memory. Route suppression
+  preserves the mute; settlement, a different turn, or fresh attention allows
+  the bubble to return.
 - Selecting a row closes the menu and uses the existing adaptive thread
   navigation. It never interrupts, settles, or duplicates the running session.
 - The active thread is excluded from the visible list.
@@ -109,8 +119,10 @@ relay, and tunnel environments cannot collide.
 - A small feature-local pure module owns transition, deduplication, capacity,
   persistence sanitization, visibility, and layout math.
 - A root-stack leaf observes route changes, the current thread shell, and at
-  most the five scoped shells in visible recent history. It never subscribes
-  to the global thread array or hydrates background messages.
+  most the five scoped shells in visible recent history. A child mounted only
+  on supported bubble routes subscribes to the global lightweight shell array
+  to record transitions into active work; it never hydrates background
+  messages.
 - A portal-projected visual leaf owns the bubble, menu, and gesture state. The
   portal receives route, menu, history, and presentation-changing status
   updates, never per-frame dragging. Memoization filters shell updates whose
@@ -136,7 +148,9 @@ Performance requirements:
 - No React state, atom, storage, or portal writes occur on animation frames.
 - JavaScript receives only discrete gesture events: open/close, navigation
   selection, and one normalized-position commit after settling.
-  Shell updates only recompute the bounded row statuses and read cursors.
+  Scoped shell updates only recompute the bounded row statuses and read
+  cursors. The route-gated global recorder batches newly working threads into
+  one bounded history mutation and ignores repeat observations of the same run.
 - Worklets perform only constant-time clamp and transform arithmetic.
 - The menu renders at most five rows and is unmounted while closed.
 - No idle pulse, bob, timer, continuous repaint, or simultaneously mounted chat
@@ -149,7 +163,8 @@ Performance requirements:
 - Malformed persisted data resets safely without preventing the in-memory
   launcher from working.
 - A transient storage load failure must not overwrite previously valid data
-  with an empty fallback.
+  with an empty fallback. Persistence stays disabled for that host lifetime
+  when hydration fails.
 - Temporarily disconnected threads remain navigable from their stored scoped
   reference. Existing thread loading/unavailable screens own the result.
 - If a thread was deleted, archived, or its environment was removed after it
