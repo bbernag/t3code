@@ -1,13 +1,16 @@
+import { TurnId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   countRecentThreadsNeedingAttention,
   isRecentThreadSignalUnseen,
   recentThreadItemsWithActivity,
-  recentThreadLiveKeys,
+  recentThreadLiveActivityMutes,
   recentThreadsBubbleAccessibilityLabel,
+  pruneRecentThreadLiveActivityMutes,
   resolveRecentThreadAcknowledgementBaseline,
   resolveRecentThreadAttentionSignal,
+  resolveRecentThreadLiveActivity,
   resolveRecentThreadLiveStatus,
   resolveRecentThreadStatus,
   shouldSummonRecentThreadsBubble,
@@ -33,6 +36,8 @@ function shell(overrides: Partial<RecentThreadStatusShell> = {}): RecentThreadSt
 function item(threadId: string, status: RecentThreadBubbleItem["status"]): RecentThreadBubbleItem {
   return {
     attentionOccurredAt: null,
+    liveActivity:
+      status === "working" || status === "monitoring" ? { id: `turn:${threadId}`, status } : null,
     thread: {
       environmentId: "environment-1",
       threadId,
@@ -192,8 +197,34 @@ describe("recent thread attention", () => {
     ).toBeNull();
   });
 
+  it("identifies live work by turn while keeping background work on its originating turn", () => {
+    expect(
+      resolveRecentThreadLiveActivity(
+        shell({
+          session: {
+            status: "running",
+            activeTurnId: TurnId.make("turn-1"),
+            updatedAt: "2026-08-16T11:59:00.000Z",
+          },
+        }),
+      ),
+    ).toEqual({ id: "turn:turn-1", status: "working" });
+    expect(
+      resolveRecentThreadLiveActivity(
+        shell({
+          backgroundLiveness: "working",
+          latestTurn: {
+            turnId: TurnId.make("turn-1"),
+            state: "completed",
+            completedAt: COMPLETED_AT,
+          },
+        }),
+      ),
+    ).toEqual({ id: "background:turn-1", status: "working" });
+  });
+
   it("summons the bubble for work and attention but not passive monitoring", () => {
-    const noMutes = new Set<string>();
+    const noMutes = new Map<string, string>();
 
     expect(shouldSummonRecentThreadsBubble([item("working", "working")], noMutes)).toBe(true);
     expect(shouldSummonRecentThreadsBubble([item("done", "completed")], noMutes)).toBe(true);
@@ -209,12 +240,56 @@ describe("recent thread attention", () => {
 
   it("keeps dismissed live chats quiet but lets attention cut through the mute", () => {
     const working = item("working", "working");
-    const mutes = recentThreadLiveKeys([working, item("monitoring", "monitoring")]);
+    const approvalWhileWorking = {
+      ...item("approval", "approval"),
+      liveActivity: { id: "turn:approval", status: "working" as const },
+    };
+    const mutes = recentThreadLiveActivityMutes([
+      working,
+      item("monitoring", "monitoring"),
+      approvalWhileWorking,
+    ]);
 
-    expect(mutes.size).toBe(2);
+    expect(mutes.size).toBe(3);
     expect(shouldSummonRecentThreadsBubble([working], mutes)).toBe(false);
+    expect(shouldSummonRecentThreadsBubble([approvalWhileWorking], mutes)).toBe(true);
     expect(shouldSummonRecentThreadsBubble([working, item("fresh", "working")], mutes)).toBe(true);
     expect(shouldSummonRecentThreadsBubble([item("working", "completed")], mutes)).toBe(true);
+  });
+
+  it("preserves mutes while shells are hidden and clears them on settle or a new run", () => {
+    const working = item("working", "working");
+    const key = "environment-1:working";
+    const mutes = recentThreadLiveActivityMutes([working]);
+    const hidden = { ...working, liveActivity: undefined, status: null };
+
+    expect(
+      pruneRecentThreadLiveActivityMutes({
+        items: [hidden],
+        knownThreadKeys: new Set([key]),
+        mutes,
+      }),
+    ).toBe(mutes);
+    expect(
+      pruneRecentThreadLiveActivityMutes({
+        items: [{ ...working, liveActivity: null, status: null }],
+        knownThreadKeys: new Set([key]),
+        mutes,
+      }),
+    ).toEqual(new Map());
+    expect(
+      pruneRecentThreadLiveActivityMutes({
+        items: [{ ...working, liveActivity: { id: "turn:new", status: "working" } }],
+        knownThreadKeys: new Set([key]),
+        mutes,
+      }),
+    ).toEqual(new Map());
+    expect(
+      shouldSummonRecentThreadsBubble(
+        [{ ...working, liveActivity: { id: "turn:new", status: "working" } }],
+        mutes,
+      ),
+    ).toBe(true);
   });
 
   it("describes zero, one, and multiple attention chats accessibly", () => {

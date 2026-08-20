@@ -17,10 +17,12 @@ import { FloatingRecentThreadsBubble } from "./FloatingRecentThreadsBubble";
 import {
   countRecentThreadsNeedingAttention,
   isRecentThreadAttentionStatus,
+  pruneRecentThreadLiveActivityMutes,
   recentThreadItemsWithActivity,
-  recentThreadLiveKeys,
+  recentThreadLiveActivityMutes,
   resolveRecentThreadAcknowledgementBaseline,
   resolveRecentThreadAttentionSignal,
+  resolveRecentThreadLiveActivity,
   resolveRecentThreadLiveStatus,
   resolveRecentThreadStatus,
   shouldSummonRecentThreadsBubble,
@@ -49,7 +51,8 @@ import { useRecentThreadShells } from "./useRecentThreadShells";
 type SnapshotMutation = "position" | "threadsMerge";
 const POSITION_EQUALITY_EPSILON = 0.0001;
 const EMPTY_RECENT_THREADS: ReadonlyArray<RecentThreadBubbleEntry> = [];
-const EMPTY_MUTED_KEYS: ReadonlySet<string> = new Set();
+const EMPTY_THREAD_KEYS: ReadonlySet<string> = new Set();
+const EMPTY_MUTED_ACTIVITIES: ReadonlyMap<string, string> = new Map();
 
 function samePosition(
   left: RecentThreadBubblePosition | null,
@@ -209,7 +212,7 @@ function LiveThreadRecorder(props: {
 }) {
   const projects = useProjects();
   const threadShells = useThreadShells();
-  const previousWorkingThreadKeysRef = useRef<ReadonlySet<string>>(EMPTY_MUTED_KEYS);
+  const previousWorkingThreadKeysRef = useRef<ReadonlySet<string>>(EMPTY_THREAD_KEYS);
 
   useEffect(() => {
     const projectTitles = new Map(
@@ -319,11 +322,16 @@ export function RecentThreadsBubbleHost(props: {
         return {
           attentionOccurredAt:
             shell === null ? null : (resolveRecentThreadAttentionSignal(shell)?.occurredAt ?? null),
+          liveActivity: routeSupportsBubble
+            ? shell === null
+              ? null
+              : resolveRecentThreadLiveActivity(shell)
+            : undefined,
           thread,
           status: resolveRecentThreadStatus(shell, thread.lastAcknowledgedAt),
         };
       }),
-    [recentShells, visibleThreads],
+    [recentShells, routeSupportsBubble, visibleThreads],
   );
   const menuItems = useMemo(() => recentThreadItemsWithActivity(items), [items]);
   const attentionCount = useMemo(() => countRecentThreadsNeedingAttention(items), [items]);
@@ -331,22 +339,24 @@ export function RecentThreadsBubbleHost(props: {
   // Drag-to-dismiss mutes the chats that were live at dismissal; the mute is
   // session-local and clears per chat once it settles, so its next run or its
   // completion summons the bubble again.
-  const [mutedLiveThreads, setMutedLiveThreads] = useState<ReadonlySet<string>>(EMPTY_MUTED_KEYS);
+  const knownThreadKeys = useMemo(
+    () => new Set(snapshot.threads.map(recentThreadKey)),
+    [snapshot.threads],
+  );
+  const [mutedLiveActivities, setMutedLiveActivities] =
+    useState<ReadonlyMap<string, string>>(EMPTY_MUTED_ACTIVITIES);
   useEffect(() => {
-    setMutedLiveThreads((current) => {
-      if (current.size === 0) return current;
-      const liveKeys = recentThreadLiveKeys(items);
-      const next = new Set([...current].filter((key) => liveKeys.has(key)));
-      return next.size === current.size ? current : next;
-    });
-  }, [items]);
+    setMutedLiveActivities((current) =>
+      pruneRecentThreadLiveActivityMutes({ items, knownThreadKeys, mutes: current }),
+    );
+  }, [items, knownThreadKeys]);
   const handleDismiss = useCallback(() => {
     for (const item of items) {
       if (isRecentThreadAttentionStatus(item.status) && item.attentionOccurredAt !== null) {
         acknowledgeThread(item.thread, item.attentionOccurredAt);
       }
     }
-    setMutedLiveThreads(recentThreadLiveKeys(items));
+    setMutedLiveActivities(recentThreadLiveActivityMutes(items));
   }, [acknowledgeThread, items]);
   const activeAttentionSignal = useMemo(
     () =>
@@ -383,7 +393,7 @@ export function RecentThreadsBubbleHost(props: {
   // (approval, input, or an unseen completion). Passive monitoring, quiet
   // history, and dismissed live chats keep it hidden.
   const visible =
-    routeSupportsBubble && shouldSummonRecentThreadsBubble(menuItems, mutedLiveThreads);
+    routeSupportsBubble && shouldSummonRecentThreadsBubble(menuItems, mutedLiveActivities);
 
   const handleSelectThread = useCallback(
     (item: RecentThreadBubbleItem) => {

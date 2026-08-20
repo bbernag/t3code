@@ -11,9 +11,15 @@ export type RecentThreadAttentionSignal = {
   readonly kind: RecentThreadAttentionKind;
   readonly occurredAt: string;
 };
+export type RecentThreadLiveActivity = {
+  readonly id: string;
+  readonly status: RecentThreadOperationalStatusKind;
+};
 
 export type RecentThreadBubbleItem = {
   readonly attentionOccurredAt: string | null;
+  /** Undefined while the route intentionally does not observe this shell. */
+  readonly liveActivity: RecentThreadLiveActivity | null | undefined;
   readonly thread: RecentThreadBubbleEntry;
   readonly status: RecentThreadStatusKind | null;
 };
@@ -22,8 +28,14 @@ export type RecentThreadStatusShell = {
   readonly backgroundLiveness?: "working" | "monitoring" | null;
   readonly hasPendingApprovals: boolean;
   readonly hasPendingUserInput: boolean;
-  readonly latestTurn: Pick<OrchestrationLatestTurn, "completedAt" | "state"> | null;
-  readonly session: Pick<OrchestrationSession, "status"> | null;
+  readonly latestTurn:
+    | (Pick<OrchestrationLatestTurn, "completedAt" | "state"> &
+        Partial<Pick<OrchestrationLatestTurn, "turnId">>)
+    | null;
+  readonly session:
+    | (Pick<OrchestrationSession, "status"> &
+        Partial<Pick<OrchestrationSession, "activeTurnId" | "updatedAt">>)
+    | null;
   readonly updatedAt: string;
 };
 
@@ -87,6 +99,28 @@ export function resolveRecentThreadLiveStatus(
   return shell.backgroundLiveness === "monitoring" ? "monitoring" : null;
 }
 
+export function resolveRecentThreadLiveActivity(
+  shell: RecentThreadStatusShell,
+): RecentThreadLiveActivity | null {
+  const status = resolveRecentThreadLiveStatus(shell);
+  if (status === null) return null;
+
+  const activeTurnId = shell.session?.activeTurnId;
+  if (activeTurnId !== null && activeTurnId !== undefined) {
+    return { id: `turn:${String(activeTurnId)}`, status };
+  }
+  if (shell.latestTurn?.state === "running" && shell.latestTurn.turnId !== undefined) {
+    return { id: `turn:${String(shell.latestTurn.turnId)}`, status };
+  }
+  if (shell.session?.status === "starting" || shell.session?.status === "running") {
+    return { id: `session:${shell.session.updatedAt ?? shell.updatedAt}`, status };
+  }
+  if (shell.latestTurn?.turnId !== undefined) {
+    return { id: `background:${String(shell.latestTurn.turnId)}`, status };
+  }
+  return { id: `background:${status}:${shell.updatedAt}`, status };
+}
+
 export function resolveRecentThreadStatus(
   shell: RecentThreadStatusShell | null,
   lastAcknowledgedAt: string | null,
@@ -118,22 +152,52 @@ export function isRecentThreadAttentionStatus(
  */
 export function shouldSummonRecentThreadsBubble(
   items: ReadonlyArray<RecentThreadBubbleItem>,
-  mutedLiveThreadKeys: ReadonlySet<string>,
+  mutedLiveActivities: ReadonlyMap<string, string>,
 ): boolean {
   return items.some(
     (item) =>
       isRecentThreadAttentionStatus(item.status) ||
-      (item.status === "working" && !mutedLiveThreadKeys.has(recentThreadKey(item.thread))),
+      (item.status === "working" &&
+        (item.liveActivity === null ||
+          item.liveActivity === undefined ||
+          mutedLiveActivities.get(recentThreadKey(item.thread)) !== item.liveActivity.id)),
   );
 }
 
-/** Keys of chats whose live status a dismissal should mute until they settle. */
-export function recentThreadLiveKeys(items: ReadonlyArray<RecentThreadBubbleItem>): Set<string> {
-  return new Set(
-    items
-      .filter((item) => item.status === "working" || item.status === "monitoring")
-      .map((item) => recentThreadKey(item.thread)),
-  );
+/** Live activity identities a dismissal should mute until they settle or change. */
+export function recentThreadLiveActivityMutes(
+  items: ReadonlyArray<RecentThreadBubbleItem>,
+): Map<string, string> {
+  const mutes = new Map<string, string>();
+  for (const item of items) {
+    if (item.liveActivity !== null && item.liveActivity !== undefined) {
+      mutes.set(recentThreadKey(item.thread), item.liveActivity.id);
+    }
+  }
+  return mutes;
+}
+
+export function pruneRecentThreadLiveActivityMutes(input: {
+  readonly items: ReadonlyArray<RecentThreadBubbleItem>;
+  readonly knownThreadKeys: ReadonlySet<string>;
+  readonly mutes: ReadonlyMap<string, string>;
+}): ReadonlyMap<string, string> {
+  if (input.mutes.size === 0) return input.mutes;
+
+  const itemsByKey = new Map(input.items.map((item) => [recentThreadKey(item.thread), item]));
+  let next: Map<string, string> | null = null;
+  for (const [key, mutedActivityId] of input.mutes) {
+    const item = itemsByKey.get(key);
+    const shouldRemove =
+      !input.knownThreadKeys.has(key) ||
+      (item !== undefined &&
+        item.liveActivity !== undefined &&
+        (item.liveActivity === null || item.liveActivity.id !== mutedActivityId));
+    if (!shouldRemove) continue;
+    next ??= new Map(input.mutes);
+    next.delete(key);
+  }
+  return next ?? input.mutes;
 }
 
 /** Menu rows: only chats with a live status; quiet history stays stored but hidden. */
