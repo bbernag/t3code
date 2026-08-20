@@ -37,15 +37,16 @@ import {
   recentThreadKey,
   recordDepartedThread,
   recordDepartedThreads,
+  shouldPersistRecentThreadSnapshot,
   type RecentThreadAcknowledgement,
   type RecentThreadHydrationChanges,
+  type RecentThreadHydrationStatus,
   type RecentThreadRef,
   visibleRecentThreads,
 } from "./recentThreads";
 import { useRecentThreadShells } from "./useRecentThreadShells";
 
 type SnapshotMutation = "position" | "threadsMerge";
-type HydrationStatus = "failed" | "loaded" | "loading";
 const POSITION_EQUALITY_EPSILON = 0.0001;
 const EMPTY_RECENT_THREADS: ReadonlyArray<RecentThreadBubbleEntry> = [];
 const EMPTY_MUTED_KEYS: ReadonlySet<string> = new Set();
@@ -68,7 +69,7 @@ function useRecentThreadBubbleSnapshot() {
     EMPTY_RECENT_THREAD_BUBBLE_SNAPSHOT,
   );
   const snapshotRef = useRef(snapshot);
-  const hydrationStatusRef = useRef<HydrationStatus>("loading");
+  const hydrationStatusRef = useRef<RecentThreadHydrationStatus>("loading");
   const changedBeforeHydrationRef = useRef<RecentThreadHydrationChanges>({
     position: false,
     threads: "unchanged",
@@ -103,10 +104,6 @@ function useRecentThreadBubbleSnapshot() {
         if (cancelled) return;
         console.warn("[recent-threads-bubble] failed to load state", error);
         hydrationStatusRef.current = "failed";
-        const changed = changedBeforeHydrationRef.current;
-        if (changed.threads !== "unchanged" || changed.position) {
-          enqueueSave(snapshotRef.current);
-        }
       });
     return () => {
       cancelled = true;
@@ -138,7 +135,7 @@ function useRecentThreadBubbleSnapshot() {
       snapshotRef.current = next;
       setSnapshot(next);
 
-      if (status !== "loading") {
+      if (shouldPersistRecentThreadSnapshot(status)) {
         enqueueSave(next);
       }
     },

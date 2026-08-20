@@ -11,6 +11,7 @@ import {
   observeWorkingRecentThreads,
   recordDepartedThread,
   recordDepartedThreads,
+  shouldPersistRecentThreadSnapshot,
   visibleRecentThreads,
 } from "./recentThreads";
 
@@ -174,6 +175,12 @@ describe("recent thread history", () => {
         changes: { position: true, threads: "unchanged" },
       }),
     ).toEqual({ threads: [], position: null });
+  });
+
+  it("persists only after storage hydration succeeds", () => {
+    expect(shouldPersistRecentThreadSnapshot("loading")).toBe(false);
+    expect(shouldPersistRecentThreadSnapshot("failed")).toBe(false);
+    expect(shouldPersistRecentThreadSnapshot("loaded")).toBe(true);
   });
 
   it("excludes the active scoped thread without deleting it", () => {

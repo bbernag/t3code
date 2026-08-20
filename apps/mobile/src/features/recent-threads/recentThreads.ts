@@ -10,6 +10,7 @@ export type RecentThreadHydrationChanges = {
   readonly position: boolean;
   readonly threads: "merge" | "unchanged";
 };
+export type RecentThreadHydrationStatus = "failed" | "loaded" | "loading";
 export type RecentThreadAcknowledgement = {
   readonly thread: RecentThreadRef;
   readonly acknowledgedAt: string;
@@ -26,6 +27,12 @@ const BUBBLE_ROUTES = new Set([
   "ThreadReview",
   "ThreadTerminal",
 ]);
+
+export function shouldPersistRecentThreadSnapshot(
+  hydrationStatus: RecentThreadHydrationStatus,
+): boolean {
+  return hydrationStatus === "loaded";
+}
 
 export function isSameRecentThread(
   left: RecentThreadRef | null,
