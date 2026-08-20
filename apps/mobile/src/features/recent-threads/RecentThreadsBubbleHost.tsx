@@ -40,11 +40,13 @@ import {
   recentThreadKey,
   recordDepartedThread,
   recordDepartedThreads,
+  refreshRecentThreadMetadata,
   shouldPersistRecentThreadSnapshot,
   type RecentThreadAcknowledgement,
   type RecentThreadHydrationChanges,
   type RecentThreadHydrationStatus,
   type RecentThreadRef,
+  type RecentThreadWorkingObservation,
   visibleRecentThreads,
 } from "./recentThreads";
 import { useRecentThreadShells } from "./useRecentThreadShells";
@@ -155,11 +157,11 @@ function useRecentThreadBubbleSnapshot() {
     },
     [commit],
   );
-  const recordThreads = useCallback(
-    (recordedThreads: ReadonlyArray<RecentThreadBubbleEntry>) => {
-      if (recordedThreads.length === 0) return;
+  const recordWorkingThreads = useCallback(
+    (observation: RecentThreadWorkingObservation) => {
       commit("threadsMerge", (current) => {
-        const threads = recordDepartedThreads(current.threads, recordedThreads);
+        const recorded = recordDepartedThreads(current.threads, observation.newlyWorkingThreads);
+        const threads = refreshRecentThreadMetadata(recorded, observation.workingThreads);
         return threads === current.threads ? current : { ...current, threads };
       });
     },
@@ -208,7 +210,7 @@ function useRecentThreadBubbleSnapshot() {
     acknowledgeThreads,
     initializeAcknowledgements,
     recordThread,
-    recordThreads,
+    recordWorkingThreads,
     setPosition,
   };
 }
@@ -220,11 +222,11 @@ function useRecentThreadBubbleSnapshot() {
 // acknowledgement pipeline. Passive monitoring threads are not imported.
 function LiveThreadRecorder(props: {
   readonly activeThread: RecentThreadRef | null;
-  readonly onRecordThreads: (entries: ReadonlyArray<RecentThreadBubbleEntry>) => void;
+  readonly onObserveWorkingThreads: (observation: RecentThreadWorkingObservation) => void;
+  readonly previousWorkingThreadKeysRef: { current: ReadonlySet<string> };
 }) {
   const projects = useProjects();
   const threadShells = useThreadShells();
-  const previousWorkingThreadKeysRef = useRef<ReadonlySet<string>>(EMPTY_THREAD_KEYS);
 
   useEffect(() => {
     const projectTitles = new Map(
@@ -245,12 +247,18 @@ function LiveThreadRecorder(props: {
     });
     const observation = observeWorkingRecentThreads({
       activeThread: props.activeThread,
-      previousWorkingThreadKeys: previousWorkingThreadKeysRef.current,
+      previousWorkingThreadKeys: props.previousWorkingThreadKeysRef.current,
       workingThreads,
     });
-    previousWorkingThreadKeysRef.current = observation.workingThreadKeys;
-    props.onRecordThreads(observation.newlyWorkingThreads);
-  }, [projects, props.activeThread, props.onRecordThreads, threadShells]);
+    props.previousWorkingThreadKeysRef.current = observation.workingThreadKeys;
+    props.onObserveWorkingThreads(observation);
+  }, [
+    projects,
+    props.activeThread,
+    props.onObserveWorkingThreads,
+    props.previousWorkingThreadKeysRef,
+    threadShells,
+  ]);
 
   return null;
 }
@@ -267,7 +275,7 @@ export function RecentThreadsBubbleHost(props: {
     acknowledgeThreads,
     initializeAcknowledgements,
     recordThread,
-    recordThreads,
+    recordWorkingThreads,
     setPosition,
   } = useRecentThreadBubbleSnapshot();
   const activeThreadRef = useMemo(
@@ -275,6 +283,7 @@ export function RecentThreadsBubbleHost(props: {
       props.topRouteName === "NewTaskSheet" ? null : parseActiveThreadPath(props.workspacePathname),
     [props.topRouteName, props.workspacePathname],
   );
+  const previousWorkingThreadKeysRef = useRef<ReadonlySet<string>>(EMPTY_THREAD_KEYS);
   const resolvedThreadShell = useThreadShell(activeThreadRef);
   const activeThreadShell =
     activeThreadRef !== null &&
@@ -430,7 +439,11 @@ export function RecentThreadsBubbleHost(props: {
   return (
     <>
       {routeSupportsBubble ? (
-        <LiveThreadRecorder activeThread={activeThreadRef} onRecordThreads={recordThreads} />
+        <LiveThreadRecorder
+          activeThread={activeThreadRef}
+          previousWorkingThreadKeysRef={previousWorkingThreadKeysRef}
+          onObserveWorkingThreads={recordWorkingThreads}
+        />
       ) : null}
       {visible ? (
         <FloatingRecentThreadsBubble

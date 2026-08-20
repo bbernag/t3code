@@ -12,6 +12,7 @@ import {
   observeWorkingRecentThreads,
   recordDepartedThread,
   recordDepartedThreads,
+  refreshRecentThreadMetadata,
   shouldPersistRecentThreadSnapshot,
   visibleRecentThreads,
 } from "./recentThreads";
@@ -150,6 +151,22 @@ describe("recent thread history", () => {
     expect(stored.map((entry) => entry.threadId)).toEqual(["f", "e", "d", "c", "b"]);
     expect(repeatedObservation.newlyWorkingThreads).toEqual([]);
     expect(recordDepartedThreads(stored, repeatedObservation.newlyWorkingThreads)).toBe(stored);
+  });
+
+  it("refreshes stored working metadata without importing or reordering overflow", () => {
+    const stored = [thread("b"), thread("c"), thread("d"), thread("e"), thread("f")];
+    const updatedStoredThread = {
+      ...thread("b", "environment-1", "Updated title"),
+      projectTitle: "Updated project",
+    };
+    const refreshed = refreshRecentThreadMetadata(stored, [
+      thread("a", "environment-1", "Updated overflow"),
+      updatedStoredThread,
+    ]);
+
+    expect(refreshed.map((entry) => entry.threadId)).toEqual(["b", "c", "d", "e", "f"]);
+    expect(refreshed[0]).toEqual(updatedStoredThread);
+    expect(refreshRecentThreadMetadata(refreshed, [updatedStoredThread])).toBe(refreshed);
   });
 
   it("observes the active thread's working edge without adding it to recents", () => {
