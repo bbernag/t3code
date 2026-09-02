@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { AppState } from "react-native";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -85,9 +86,18 @@ const ThemedSvg = withUniwind(Svg);
 export function RecentThreadsWorkingRing() {
   const reducedMotion = useReducedMotion();
   const rotation = useSharedValue(0);
+  const [appIsActive, setAppIsActive] = useState(AppState.currentState === "active");
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      setAppIsActive(state === "active");
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     if (reducedMotion) return;
+    if (!appIsActive) return;
     rotation.value = 0;
     rotation.value = withRepeat(
       withTiming(360, { duration: RING_REVOLUTION_MS, easing: Easing.linear }),
@@ -97,7 +107,7 @@ export function RecentThreadsWorkingRing() {
     return () => {
       cancelAnimation(rotation);
     };
-  }, [reducedMotion, rotation]);
+  }, [appIsActive, reducedMotion, rotation]);
 
   const ringStyle = useAnimatedStyle(() => ({
     transform: [{ rotateZ: `${rotation.value}deg` }],
