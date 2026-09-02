@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AppState } from "react-native";
+import { AccessibilityInfo, AppState } from "react-native";
 import Animated, {
   cancelAnimation,
   Easing,
@@ -84,7 +84,10 @@ const ThemedSvg = withUniwind(Svg);
  * full ring so the signal survives without movement.
  */
 export function RecentThreadsWorkingRing() {
-  const reducedMotion = useReducedMotion();
+  // Reanimated's value is read once at startup; the AccessibilityInfo
+  // subscription below keeps it current while the app stays open.
+  const startupReducedMotion = useReducedMotion();
+  const [reducedMotion, setReducedMotion] = useState(startupReducedMotion);
   const rotation = useSharedValue(0);
   const [appIsActive, setAppIsActive] = useState(AppState.currentState === "active");
 
@@ -93,6 +96,21 @@ export function RecentThreadsWorkingRing() {
       setAppIsActive(state === "active");
     });
     return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (!cancelled) setReducedMotion(enabled);
+    });
+    const subscription = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      setReducedMotion,
+    );
+    return () => {
+      cancelled = true;
+      subscription.remove();
+    };
   }, []);
 
   useEffect(() => {
