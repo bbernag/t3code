@@ -48,8 +48,18 @@ export function isSameRecentThread(
   );
 }
 
+// Matches surrogate pairs (kept) and lone surrogates (replaced); the latter
+// make encodeURIComponent throw, and an id is never worth crashing the host.
+const SURROGATE_PATTERN = /[\uD800-\uDBFF][\uDC00-\uDFFF]|[\uD800-\uDFFF]/g;
+
+function encodeKeyPart(value: string): string {
+  return encodeURIComponent(
+    value.replace(SURROGATE_PATTERN, (match) => (match.length === 2 ? match : "\uFFFD")),
+  );
+}
+
 export function recentThreadKey(thread: RecentThreadRef): string {
-  return `${encodeURIComponent(thread.environmentId)}:${encodeURIComponent(thread.threadId)}`;
+  return `${encodeKeyPart(thread.environmentId)}:${encodeKeyPart(thread.threadId)}`;
 }
 
 function timestampValue(value: string | null): number | null {

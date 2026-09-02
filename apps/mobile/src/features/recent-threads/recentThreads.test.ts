@@ -11,6 +11,7 @@ import {
   mergeRecentThreads,
   observeWorkingRecentThreads,
   recordDepartedThread,
+  recentThreadKey,
   recordDepartedThreads,
   refreshRecentThreadMetadata,
   shouldPersistRecentThreadSnapshot,
@@ -27,6 +28,21 @@ function thread(
 }
 
 describe("recent thread history", () => {
+  it("keys threads without colliding on separators or throwing on lone surrogates", () => {
+    expect(recentThreadKey({ environmentId: "env:1", threadId: "a" })).not.toBe(
+      recentThreadKey({ environmentId: "env", threadId: "1:a" }),
+    );
+    expect(recentThreadKey({ environmentId: "env-\u{1F600}", threadId: "a" })).toBe(
+      recentThreadKey({ environmentId: "env-\u{1F600}", threadId: "a" }),
+    );
+    expect(() =>
+      recentThreadKey({ environmentId: "env-\uD83D", threadId: "\uDE00-a" }),
+    ).not.toThrow();
+    expect(recentThreadKey({ environmentId: "env-\uD83D", threadId: "a" })).not.toBe(
+      recentThreadKey({ environmentId: "env-", threadId: "a" }),
+    );
+  });
+
   it("records only real departures, not initial or nested-route observations", () => {
     const a = thread("a");
 
