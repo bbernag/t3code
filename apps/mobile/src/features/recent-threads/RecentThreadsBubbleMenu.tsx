@@ -13,7 +13,6 @@ import { AppText as Text } from "../../components/AppText";
 import { SymbolView } from "../../components/AppSymbol";
 import { GlassSurface } from "../../components/GlassSurface";
 import { cn } from "../../lib/cn";
-import { useThemeColor } from "../../lib/useThemeColor";
 import {
   clampFloatingChatValue,
   resolveFloatingChatMenuScaleOrigin,
@@ -34,28 +33,28 @@ const MENU_SURFACE_STYLE = { borderRadius: 20 } satisfies ViewStyle;
 const STATUS_PRESENTATION = {
   approval: {
     label: "Approval",
-    pillClassName: "bg-amber-500/12 dark:bg-amber-500/16",
-    textClassName: "text-amber-700 dark:text-amber-300",
+    pillClassName: "bg-adaptive-amber-500-a12-a16",
+    textClassName: "text-adaptive-amber-700-300",
   },
   input: {
     label: "Input",
-    pillClassName: "bg-indigo-500/12 dark:bg-indigo-500/16",
-    textClassName: "text-indigo-700 dark:text-indigo-300",
+    pillClassName: "bg-adaptive-indigo-500-a12-a16",
+    textClassName: "text-adaptive-indigo-700-300",
   },
   completed: {
     label: "Done",
-    pillClassName: "bg-emerald-500/12 dark:bg-emerald-500/16",
-    textClassName: "text-emerald-700 dark:text-emerald-300",
+    pillClassName: "bg-adaptive-emerald-500-a12-a16",
+    textClassName: "text-adaptive-emerald-700-300",
   },
   working: {
     label: "Working",
-    pillClassName: "bg-sky-500/12 dark:bg-sky-500/16",
-    textClassName: "text-sky-700 dark:text-sky-300",
+    pillClassName: "bg-adaptive-sky-500-a12-a16",
+    textClassName: "text-adaptive-sky-700-300",
   },
   monitoring: {
     label: "Monitoring",
-    pillClassName: "bg-sky-500/12 dark:bg-sky-500/16",
-    textClassName: "text-sky-700 dark:text-sky-300",
+    pillClassName: "bg-adaptive-sky-500-a12-a16",
+    textClassName: "text-adaptive-sky-700-300",
   },
 } as const satisfies Record<
   RecentThreadStatusKind,
@@ -73,11 +72,6 @@ export function RecentThreadsBubbleMenu(props: {
   readonly onClose: () => void;
   readonly onSelectThread: (item: RecentThreadBubbleItem) => void;
 }) {
-  const cardColor = useThemeColor("--color-card");
-  const foregroundColor = useThemeColor("--color-foreground");
-  const mutedColor = useThemeColor("--color-foreground-muted");
-  const subtleColor = useThemeColor("--color-subtle");
-
   const menuWidth = props.layout.width;
   const [surfaceHeight, setSurfaceHeight] = useState(props.layout.maxHeight);
   const scaleOrigin = resolveFloatingChatMenuScaleOrigin({
@@ -154,7 +148,7 @@ export function RecentThreadsBubbleMenu(props: {
       >
         <GlassSurface
           forceFallback
-          fallbackStyle={{ backgroundColor: cardColor }}
+          fallbackClassName="bg-card"
           style={[
             MENU_SURFACE_STYLE,
             {
@@ -186,7 +180,6 @@ export function RecentThreadsBubbleMenu(props: {
                     accessibilityHint="Opens this chat"
                     accessibilityLabel={`${recentThreadLabel(thread)}${status === null ? "" : `, ${status.label}`}`}
                     accessibilityRole="button"
-                    android_ripple={{ color: subtleColor }}
                     className={cn(
                       "min-h-16 flex-row items-center gap-3 px-3 py-2.5 active:bg-subtle",
                       index > 0 && "border-t border-border",
@@ -197,7 +190,7 @@ export function RecentThreadsBubbleMenu(props: {
                       <SymbolView
                         name="text.bubble"
                         size={18}
-                        tintColor={foregroundColor}
+                        tintColorClassName="accent-foreground"
                         type="monochrome"
                         weight="medium"
                       />
@@ -229,7 +222,7 @@ export function RecentThreadsBubbleMenu(props: {
                       <SymbolView
                         name="chevron.right"
                         size={14}
-                        tintColor={mutedColor}
+                        tintColorClassName="accent-foreground-muted"
                         type="monochrome"
                         weight="semibold"
                       />

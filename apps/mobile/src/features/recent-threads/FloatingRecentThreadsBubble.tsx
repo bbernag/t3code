@@ -28,7 +28,6 @@ import { scheduleOnRN } from "react-native-worklets";
 import { AppText as Text } from "../../components/AppText";
 import { SymbolView } from "../../components/AppSymbol";
 import { OverlayPortal } from "../../components/OverlayPortal";
-import { useThemeColor } from "../../lib/useThemeColor";
 import type { RecentThreadBubblePosition } from "../../persistence/imperative";
 import {
   FLOATING_CHAT_BUBBLE_SIZE,
@@ -166,8 +165,6 @@ function fireSettleHaptic() {
 export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBubble(props: Props) {
   const insets = useSafeAreaInsets();
   const { height: keyboardHeight } = useKeyboardContext().reanimated;
-  const primaryForegroundColor = useThemeColor("--color-primary-foreground");
-  const foregroundColor = useThemeColor("--color-foreground");
   const viewportWidth = props.width;
   const viewportHeight = props.height;
   const [menuPresence, setMenuPresence] = useState(BubbleMenuPresence.Closed);
@@ -621,7 +618,7 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
           <SymbolView
             name="xmark"
             size={22}
-            tintColor={foregroundColor}
+            tintColorClassName="accent-foreground"
             type="monochrome"
             weight="semibold"
           />
@@ -655,7 +652,7 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
                 <SymbolView
                   name="text.bubble"
                   size={22}
-                  tintColor={primaryForegroundColor}
+                  tintColorClassName="accent-primary-foreground"
                   type="monochrome"
                   weight="semibold"
                 />
