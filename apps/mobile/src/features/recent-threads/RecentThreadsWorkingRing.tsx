@@ -113,14 +113,22 @@ export function RecentThreadsWorkingRing() {
     };
   }, []);
 
+  // Reanimated's own reduce-motion flag is fixed at startup, so the loop opts
+  // out of it and lets the live `reducedMotion` state above decide instead.
   useEffect(() => {
     if (reducedMotion) return;
     if (!appIsActive) return;
     rotation.value = 0;
     rotation.value = withRepeat(
-      withTiming(360, { duration: RING_REVOLUTION_MS, easing: Easing.linear }),
+      withTiming(360, {
+        duration: RING_REVOLUTION_MS,
+        easing: Easing.linear,
+        reduceMotion: ReduceMotion.Never,
+      }),
       -1,
       false,
+      undefined,
+      ReduceMotion.Never,
     );
     return () => {
       cancelAnimation(rotation);
