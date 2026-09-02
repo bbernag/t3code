@@ -131,7 +131,6 @@ export function RecentThreadsBubbleHost(props: {
   );
   const menuItems = useMemo(() => recentThreadItemsWithActivity(items), [items]);
   const attentionCount = useMemo(() => countRecentThreadsNeedingAttention(items), [items]);
-  const working = useMemo(() => hasRecentThreadWorking(items), [items]);
 
   // Drag-to-dismiss mutes the chats that were live at dismissal; the mute is
   // session-local and clears per chat once it settles, so its next run or its
@@ -142,6 +141,10 @@ export function RecentThreadsBubbleHost(props: {
   );
   const [mutedLiveActivities, setMutedLiveActivities] =
     useState<ReadonlyMap<string, string>>(EMPTY_MUTED_ACTIVITIES);
+  const working = useMemo(
+    () => hasRecentThreadWorking(items, mutedLiveActivities),
+    [items, mutedLiveActivities],
+  );
   useEffect(() => {
     setMutedLiveActivities((current) =>
       pruneRecentThreadLiveActivityMutes({ items, knownThreadKeys, mutes: current }),

@@ -145,6 +145,19 @@ export function isRecentThreadAttentionStatus(
   return status === "approval" || status === "input" || status === "completed";
 }
 
+/** Active work the user has not drag-dismissed for this live activity. */
+function isUnmutedWorkingItem(
+  item: RecentThreadBubbleItem,
+  mutedLiveActivities: ReadonlyMap<string, string>,
+): boolean {
+  return (
+    item.status === "working" &&
+    (item.liveActivity === null ||
+      item.liveActivity === undefined ||
+      mutedLiveActivities.get(recentThreadKey(item.thread)) !== item.liveActivity.id)
+  );
+}
+
 /**
  * The bubble summons for attention, or for active work the user has not
  * dismissed away; passive monitoring alone stays quiet. Muted keys come from
@@ -156,11 +169,7 @@ export function shouldSummonRecentThreadsBubble(
 ): boolean {
   return items.some(
     (item) =>
-      isRecentThreadAttentionStatus(item.status) ||
-      (item.status === "working" &&
-        (item.liveActivity === null ||
-          item.liveActivity === undefined ||
-          mutedLiveActivities.get(recentThreadKey(item.thread)) !== item.liveActivity.id)),
+      isRecentThreadAttentionStatus(item.status) || isUnmutedWorkingItem(item, mutedLiveActivities),
   );
 }
 
@@ -207,9 +216,12 @@ export function recentThreadItemsWithActivity(
   return items.filter((item) => item.status !== null);
 }
 
-/** True while any off-screen chat has an agent actively working. */
-export function hasRecentThreadWorking(items: ReadonlyArray<RecentThreadBubbleItem>): boolean {
-  return items.some((item) => item.status === "working");
+/** True while any off-screen chat has an agent actively working the user has not dismissed. */
+export function hasRecentThreadWorking(
+  items: ReadonlyArray<RecentThreadBubbleItem>,
+  mutedLiveActivities: ReadonlyMap<string, string>,
+): boolean {
+  return items.some((item) => isUnmutedWorkingItem(item, mutedLiveActivities));
 }
 
 export function countRecentThreadsNeedingAttention(

@@ -294,16 +294,32 @@ describe("recent thread attention", () => {
   });
 
   it("flags active work for the ring only while a chat is working", () => {
-    expect(hasRecentThreadWorking([item("working", "working"), item("idle", null)])).toBe(true);
+    const noMutes = new Map<string, string>();
+    const working = item("working", "working");
+
+    expect(hasRecentThreadWorking([working, item("idle", null)], noMutes)).toBe(true);
+    expect(hasRecentThreadWorking([working], recentThreadLiveActivityMutes([working]))).toBe(false);
     expect(
-      hasRecentThreadWorking([
-        item("approval", "approval"),
-        item("done", "completed"),
-        item("monitoring", "monitoring"),
-        item("idle", null),
-      ]),
+      hasRecentThreadWorking(
+        [working],
+        recentThreadLiveActivityMutes([
+          { ...working, liveActivity: { id: "turn:stale", status: "working" } },
+        ]),
+      ),
+    ).toBe(true);
+    expect(hasRecentThreadWorking([{ ...working, liveActivity: null }], noMutes)).toBe(true);
+    expect(
+      hasRecentThreadWorking(
+        [
+          item("approval", "approval"),
+          item("done", "completed"),
+          item("monitoring", "monitoring"),
+          item("idle", null),
+        ],
+        noMutes,
+      ),
     ).toBe(false);
-    expect(hasRecentThreadWorking([])).toBe(false);
+    expect(hasRecentThreadWorking([], noMutes)).toBe(false);
   });
 
   it("describes attention counts and active work accessibly", () => {
