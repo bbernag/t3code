@@ -15,10 +15,16 @@ export type RecentThreadAcknowledgement = {
   readonly thread: RecentThreadRef;
   readonly acknowledgedAt: string;
 };
+/** A thread that is working right now, identified by the live run it is on. */
+export type RecentThreadWorkingRun = {
+  readonly activityId: string;
+  readonly thread: RecentThreadBubbleEntry;
+};
 export type RecentThreadWorkingObservation = {
   readonly newlyWorkingThreads: ReadonlyArray<RecentThreadBubbleEntry>;
   readonly workingThreads: ReadonlyArray<RecentThreadBubbleEntry>;
-  readonly workingThreadKeys: ReadonlySet<string>;
+  /** Thread key to the activity id observed working, for the next observation. */
+  readonly workingActivities: ReadonlyMap<string, string>;
 };
 
 const BUBBLE_ROUTES = new Set([
@@ -154,18 +160,31 @@ export function refreshRecentThreadMetadata(
   return changed ? next : threads;
 }
 
+/**
+ * A run is new when its activity id differs from the one last seen for that
+ * thread, so a run that ended and restarted while the recorder was unmounted
+ * is recorded again, while a continuing run is recorded once.
+ */
 export function observeWorkingRecentThreads(input: {
   readonly activeThread: RecentThreadRef | null;
-  readonly previousWorkingThreadKeys: ReadonlySet<string>;
-  readonly workingThreads: ReadonlyArray<RecentThreadBubbleEntry>;
+  readonly previousWorkingActivities: ReadonlyMap<string, string>;
+  readonly workingRuns: ReadonlyArray<RecentThreadWorkingRun>;
 }): RecentThreadWorkingObservation {
-  const workingThreadKeys = new Set(input.workingThreads.map(recentThreadKey));
-  const newlyWorkingThreads = input.workingThreads.filter(
-    (thread) =>
-      !input.previousWorkingThreadKeys.has(recentThreadKey(thread)) &&
-      !isSameRecentThread(thread, input.activeThread),
+  const workingActivities = new Map(
+    input.workingRuns.map((run) => [recentThreadKey(run.thread), run.activityId]),
   );
-  return { newlyWorkingThreads, workingThreads: input.workingThreads, workingThreadKeys };
+  const newlyWorkingThreads = input.workingRuns
+    .filter(
+      (run) =>
+        input.previousWorkingActivities.get(recentThreadKey(run.thread)) !== run.activityId &&
+        !isSameRecentThread(run.thread, input.activeThread),
+    )
+    .map((run) => run.thread);
+  return {
+    newlyWorkingThreads,
+    workingThreads: input.workingRuns.map((run) => run.thread),
+    workingActivities,
+  };
 }
 
 export function acknowledgeRecentThread(

@@ -16,6 +16,7 @@ import {
   refreshRecentThreadMetadata,
   shouldPersistRecentThreadSnapshot,
   visibleRecentThreads,
+  type RecentThreadWorkingRun,
 } from "./recentThreads";
 
 function thread(
@@ -25,6 +26,10 @@ function thread(
   lastAcknowledgedAt: string | null = null,
 ): RecentThreadBubbleEntry {
   return { environmentId, threadId, title, projectTitle: "T3 Code", lastAcknowledgedAt };
+}
+
+function run(threadId: string, activityId = `turn:${threadId}`): RecentThreadWorkingRun {
+  return { activityId, thread: thread(threadId) };
 }
 
 describe("recent thread history", () => {
@@ -151,22 +156,44 @@ describe("recent thread history", () => {
   });
 
   it("records an overflow of working threads once instead of rotating stored slots", () => {
-    const workingThreads = ["a", "b", "c", "d", "e", "f"].map((threadId) => thread(threadId));
+    const workingRuns = ["a", "b", "c", "d", "e", "f"].map((threadId) => run(threadId));
     const firstObservation = observeWorkingRecentThreads({
       activeThread: null,
-      previousWorkingThreadKeys: new Set(),
-      workingThreads,
+      previousWorkingActivities: new Map(),
+      workingRuns,
     });
     const stored = recordDepartedThreads([], firstObservation.newlyWorkingThreads);
     const repeatedObservation = observeWorkingRecentThreads({
       activeThread: null,
-      previousWorkingThreadKeys: firstObservation.workingThreadKeys,
-      workingThreads,
+      previousWorkingActivities: firstObservation.workingActivities,
+      workingRuns,
     });
 
     expect(stored.map((entry) => entry.threadId)).toEqual(["f", "e", "d", "c", "b"]);
     expect(repeatedObservation.newlyWorkingThreads).toEqual([]);
     expect(recordDepartedThreads(stored, repeatedObservation.newlyWorkingThreads)).toBe(stored);
+  });
+
+  it("re-records a thread whose run changed while it went unobserved", () => {
+    const firstObservation = observeWorkingRecentThreads({
+      activeThread: null,
+      previousWorkingActivities: new Map(),
+      workingRuns: [run("a", "turn:1")],
+    });
+    const sameRun = observeWorkingRecentThreads({
+      activeThread: null,
+      previousWorkingActivities: firstObservation.workingActivities,
+      workingRuns: [run("a", "turn:1")],
+    });
+    const newRun = observeWorkingRecentThreads({
+      activeThread: null,
+      previousWorkingActivities: firstObservation.workingActivities,
+      workingRuns: [run("a", "turn:2")],
+    });
+
+    expect(sameRun.newlyWorkingThreads).toEqual([]);
+    expect(newRun.newlyWorkingThreads).toEqual([thread("a")]);
+    expect(newRun.workingActivities.get("environment-1:a")).toBe("turn:2");
   });
 
   it("refreshes stored working metadata without importing or reordering overflow", () => {
@@ -189,12 +216,12 @@ describe("recent thread history", () => {
     const active = thread("active");
     const observation = observeWorkingRecentThreads({
       activeThread: active,
-      previousWorkingThreadKeys: new Set(),
-      workingThreads: [active, thread("background")],
+      previousWorkingActivities: new Map(),
+      workingRuns: [run("active"), run("background")],
     });
 
     expect(observation.newlyWorkingThreads).toEqual([thread("background")]);
-    expect(observation.workingThreadKeys).toContain("environment-1:active");
+    expect(observation.workingActivities.get("environment-1:active")).toBe("turn:active");
   });
 
   it("merges departures that happened while persisted history was loading", () => {

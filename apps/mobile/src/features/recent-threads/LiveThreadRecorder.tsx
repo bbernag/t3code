@@ -2,11 +2,12 @@ import { useEffect } from "react";
 
 import type { RecentThreadBubbleEntry } from "../../persistence/imperative";
 import { useProjects, useThreadShells } from "../../state/entities";
-import { resolveRecentThreadLiveStatus } from "./recentThreadAttention";
+import { resolveRecentThreadLiveActivity } from "./recentThreadAttention";
 import {
   observeWorkingRecentThreads,
   type RecentThreadRef,
   type RecentThreadWorkingObservation,
+  type RecentThreadWorkingRun,
 } from "./recentThreads";
 
 // Mounted only on bubble routes so the app-wide shell subscription it needs
@@ -17,7 +18,7 @@ import {
 export function LiveThreadRecorder(props: {
   readonly activeThread: RecentThreadRef | null;
   readonly onObserveWorkingThreads: (observation: RecentThreadWorkingObservation) => void;
-  readonly previousWorkingThreadKeysRef: { current: ReadonlySet<string> };
+  readonly previousWorkingActivitiesRef: { current: ReadonlyMap<string, string> };
 }) {
   const projects = useProjects();
   const threadShells = useThreadShells();
@@ -26,29 +27,32 @@ export function LiveThreadRecorder(props: {
     const projectTitles = new Map(
       projects.map((project) => [`${project.environmentId}:${project.id}`, project.title]),
     );
-    const workingThreads: RecentThreadBubbleEntry[] = [];
+    const workingRuns: RecentThreadWorkingRun[] = [];
     for (const shell of threadShells) {
-      if (shell.archivedAt !== null || resolveRecentThreadLiveStatus(shell) !== "working") continue;
-      workingThreads.push({
+      if (shell.archivedAt !== null) continue;
+      const liveActivity = resolveRecentThreadLiveActivity(shell);
+      if (liveActivity?.status !== "working") continue;
+      const thread: RecentThreadBubbleEntry = {
         environmentId: String(shell.environmentId),
         threadId: String(shell.id),
         title: shell.title,
         projectTitle: projectTitles.get(`${shell.environmentId}:${shell.projectId}`) ?? "",
         lastAcknowledgedAt: null,
-      });
+      };
+      workingRuns.push({ activityId: liveActivity.id, thread });
     }
     const observation = observeWorkingRecentThreads({
       activeThread: props.activeThread,
-      previousWorkingThreadKeys: props.previousWorkingThreadKeysRef.current,
-      workingThreads,
+      previousWorkingActivities: props.previousWorkingActivitiesRef.current,
+      workingRuns,
     });
-    props.previousWorkingThreadKeysRef.current = observation.workingThreadKeys;
+    props.previousWorkingActivitiesRef.current = observation.workingActivities;
     props.onObserveWorkingThreads(observation);
   }, [
     projects,
     props.activeThread,
     props.onObserveWorkingThreads,
-    props.previousWorkingThreadKeysRef,
+    props.previousWorkingActivitiesRef,
     threadShells,
   ]);
 

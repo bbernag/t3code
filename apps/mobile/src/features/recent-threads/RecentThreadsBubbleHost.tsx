@@ -34,7 +34,7 @@ import { useRecentThreadBubbleSnapshot } from "./useRecentThreadBubbleSnapshot";
 import { useRecentThreadShells } from "./useRecentThreadShells";
 
 const EMPTY_RECENT_THREADS: ReadonlyArray<RecentThreadBubbleEntry> = [];
-const EMPTY_THREAD_KEYS: ReadonlySet<string> = new Set();
+const EMPTY_WORKING_ACTIVITIES: ReadonlyMap<string, string> = new Map();
 const EMPTY_MUTED_ACTIVITIES: ReadonlyMap<string, string> = new Map();
 
 export function RecentThreadsBubbleHost(props: {
@@ -57,7 +57,8 @@ export function RecentThreadsBubbleHost(props: {
       props.topRouteName === "NewTaskSheet" ? null : parseActiveThreadPath(props.workspacePathname),
     [props.topRouteName, props.workspacePathname],
   );
-  const previousWorkingThreadKeysRef = useRef<ReadonlySet<string>>(EMPTY_THREAD_KEYS);
+  const previousWorkingActivitiesRef =
+    useRef<ReadonlyMap<string, string>>(EMPTY_WORKING_ACTIVITIES);
   const resolvedThreadShell = useThreadShell(activeThreadRef);
   const activeThreadShell =
     activeThreadRef !== null &&
@@ -219,7 +220,7 @@ export function RecentThreadsBubbleHost(props: {
       {routeSupportsBubble ? (
         <LiveThreadRecorder
           activeThread={activeThreadRef}
-          previousWorkingThreadKeysRef={previousWorkingThreadKeysRef}
+          previousWorkingActivitiesRef={previousWorkingActivitiesRef}
           onObserveWorkingThreads={recordWorkingThreads}
         />
       ) : null}
