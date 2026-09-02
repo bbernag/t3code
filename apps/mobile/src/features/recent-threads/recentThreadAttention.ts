@@ -207,6 +207,11 @@ export function recentThreadItemsWithActivity(
   return items.filter((item) => item.status !== null);
 }
 
+/** True while any off-screen chat has an agent actively working. */
+export function hasRecentThreadWorking(items: ReadonlyArray<RecentThreadBubbleItem>): boolean {
+  return items.some((item) => item.status === "working");
+}
+
 export function countRecentThreadsNeedingAttention(
   items: ReadonlyArray<RecentThreadBubbleItem>,
 ): number {
@@ -217,7 +222,16 @@ export function countRecentThreadsNeedingAttention(
   return count;
 }
 
-export function recentThreadsBubbleAccessibilityLabel(attentionCount: number): string {
-  if (attentionCount <= 0) return "Recent activity";
-  return `Recent activity, ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} attention`;
+export function recentThreadsBubbleAccessibilityLabel(input: {
+  readonly attentionCount: number;
+  readonly working: boolean;
+}): string {
+  const parts = ["Recent activity"];
+  if (input.attentionCount > 0) {
+    parts.push(
+      `${input.attentionCount} ${input.attentionCount === 1 ? "needs" : "need"} attention`,
+    );
+  }
+  if (input.working) parts.push("agent working");
+  return parts.join(", ");
 }

@@ -75,6 +75,9 @@ References:
   connected environment, including work started from desktop or web.
 - Its numeric badge counts recent off-screen threads with unseen approval,
   input, or completed-turn signals rather than the number of menu rows.
+- A green arc orbits the bubble while any listed thread is `Working`. It is the
+  glanceable counterpart to the badge: the badge says "needs you", the ring
+  says "still running". Monitoring does not show the ring.
 - Menu rows also project `Working` and `Monitoring` from the lightweight shell.
   Those operational statuses do not increment the attention count.
 - Opening a thread acknowledges its current attention signal on that device;
@@ -141,6 +144,7 @@ The motion is calm and tactile rather than decorative:
 | Release         | Preserve physical continuity | Release velocity projects a bounded target and settles with a restrained spring | A new drag starts from the current presentation value | Snap to the bounded target |
 | Press           | Immediate feedback           | Small compression and release                                                   | Pan activation cancels the tap                        | No spatial flourish        |
 | Menu open/close | Reveal hierarchy             | Short opacity/scale transition                                                  | Selection or backdrop closes immediately              | Opacity-only or instant    |
+| Working ring    | Show an agent is still busy  | Green arc springs in and orbits the bubble on a linear loop while work runs     | Shrinks and fades out as soon as no thread is working | Still, full green ring     |
 
 Performance requirements:
 
@@ -153,8 +157,11 @@ Performance requirements:
   one bounded history mutation and ignores repeat observations of the same run.
 - Worklets perform only constant-time clamp and transform arithmetic.
 - The menu renders at most five rows and is unmounted while closed.
-- No idle pulse, bob, timer, continuous repaint, or simultaneously mounted chat
-  view is introduced.
+- The working ring is the one continuous animation, and it runs only while a
+  listed thread is working: a single rotation transform on a wrapper view,
+  composited natively, with the SVG arc drawn once. Reduce Motion replaces the
+  loop with a static ring. No idle pulse, bob, timer, or simultaneously mounted
+  chat view is introduced.
 - The bubble respects safe areas, the keyboard, orientation, split screen, and
   a minimum 44-point touch target.
 

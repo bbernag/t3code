@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   countRecentThreadsNeedingAttention,
+  hasRecentThreadWorking,
   isRecentThreadSignalUnseen,
   recentThreadItemsWithActivity,
   recentThreadLiveActivityMutes,
@@ -292,9 +293,34 @@ describe("recent thread attention", () => {
     ).toBe(true);
   });
 
-  it("describes zero, one, and multiple attention chats accessibly", () => {
-    expect(recentThreadsBubbleAccessibilityLabel(0)).toBe("Recent activity");
-    expect(recentThreadsBubbleAccessibilityLabel(1)).toBe("Recent activity, 1 needs attention");
-    expect(recentThreadsBubbleAccessibilityLabel(2)).toBe("Recent activity, 2 need attention");
+  it("flags active work for the ring only while a chat is working", () => {
+    expect(hasRecentThreadWorking([item("working", "working"), item("idle", null)])).toBe(true);
+    expect(
+      hasRecentThreadWorking([
+        item("approval", "approval"),
+        item("done", "completed"),
+        item("monitoring", "monitoring"),
+        item("idle", null),
+      ]),
+    ).toBe(false);
+    expect(hasRecentThreadWorking([])).toBe(false);
+  });
+
+  it("describes attention counts and active work accessibly", () => {
+    expect(recentThreadsBubbleAccessibilityLabel({ attentionCount: 0, working: false })).toBe(
+      "Recent activity",
+    );
+    expect(recentThreadsBubbleAccessibilityLabel({ attentionCount: 1, working: false })).toBe(
+      "Recent activity, 1 needs attention",
+    );
+    expect(recentThreadsBubbleAccessibilityLabel({ attentionCount: 2, working: false })).toBe(
+      "Recent activity, 2 need attention",
+    );
+    expect(recentThreadsBubbleAccessibilityLabel({ attentionCount: 0, working: true })).toBe(
+      "Recent activity, agent working",
+    );
+    expect(recentThreadsBubbleAccessibilityLabel({ attentionCount: 2, working: true })).toBe(
+      "Recent activity, 2 need attention, agent working",
+    );
   });
 });

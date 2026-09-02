@@ -55,7 +55,9 @@ stopping any work running in the other chats.
 The menu lists chats with something happening — up to five. Rows show **Approval**, **Input**, or
 **Done** when a chat needs you, and **Working** or **Monitoring** while another agent is still
 active; chats with nothing going on stay out of the menu. The number on the bubble counts only the
-chats that need you — working and monitoring chats do not increase it. Opening the menu leaves
+chats that need you — working and monitoring chats do not increase it. While an agent is still
+working in one of those chats, a green arc circles the bubble; it stops as soon as the work
+settles. With Reduce Motion on, the arc becomes a still green ring. Opening the menu leaves
 these indicators intact; opening a specific chat marks its attention as seen on that device. Once
 nothing is running and nothing needs you, the bubble goes away until the next chat wants your
 attention.

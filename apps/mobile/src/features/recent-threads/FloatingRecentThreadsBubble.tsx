@@ -46,6 +46,7 @@ import {
   resolveFloatingChatPoint,
 } from "./floatingRecentThreadsLayout";
 import { RecentThreadsBubbleMenu } from "./RecentThreadsBubbleMenu";
+import { RecentThreadsWorkingRing } from "./RecentThreadsWorkingRing";
 import {
   recentThreadsBubbleAccessibilityLabel,
   type RecentThreadBubbleItem,
@@ -111,6 +112,7 @@ type Props = {
   readonly items: ReadonlyArray<RecentThreadBubbleItem>;
   readonly position: RecentThreadBubblePosition | null;
   readonly width: number;
+  readonly working: boolean;
   readonly onDismiss: () => void;
   readonly onPositionChange: (position: RecentThreadBubblePosition) => void;
   readonly onSelectThread: (item: RecentThreadBubbleItem) => void;
@@ -146,6 +148,7 @@ function arePropsEqual(previous: Props, next: Props): boolean {
     previous.position?.x === next.position?.x &&
     previous.position?.y === next.position?.y &&
     previous.width === next.width &&
+    previous.working === next.working &&
     previous.onDismiss === next.onDismiss &&
     previous.onPositionChange === next.onPositionChange &&
     previous.onSelectThread === next.onSelectThread
@@ -635,7 +638,10 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
                 { name: "dismiss", label: "Dismiss until new activity" },
               ]}
               accessibilityHint="Double tap to show recent activity, or drag to move"
-              accessibilityLabel={recentThreadsBubbleAccessibilityLabel(props.attentionCount)}
+              accessibilityLabel={recentThreadsBubbleAccessibilityLabel({
+                attentionCount: props.attentionCount,
+                working: props.working,
+              })}
               accessibilityRole="button"
               accessibilityState={{ expanded: menuOpen }}
               className="absolute left-0 top-0 items-center justify-center"
@@ -649,6 +655,7 @@ export const FloatingRecentThreadsBubble = memo(function FloatingRecentThreadsBu
                 exiting={POP_OUT}
                 style={BUBBLE_CIRCLE_STYLE}
               >
+                {props.working ? <RecentThreadsWorkingRing /> : null}
                 <SymbolView
                   name="text.bubble"
                   size={22}

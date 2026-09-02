@@ -10,6 +10,7 @@ import { FloatingRecentThreadsBubble } from "./FloatingRecentThreadsBubble";
 import { LiveThreadRecorder } from "./LiveThreadRecorder";
 import {
   countRecentThreadsNeedingAttention,
+  hasRecentThreadWorking,
   isRecentThreadAttentionStatus,
   pruneRecentThreadLiveActivityMutes,
   recentThreadItemsWithActivity,
@@ -130,6 +131,7 @@ export function RecentThreadsBubbleHost(props: {
   );
   const menuItems = useMemo(() => recentThreadItemsWithActivity(items), [items]);
   const attentionCount = useMemo(() => countRecentThreadsNeedingAttention(items), [items]);
+  const working = useMemo(() => hasRecentThreadWorking(items), [items]);
 
   // Drag-to-dismiss mutes the chats that were live at dismissal; the mute is
   // session-local and clears per chat once it settles, so its next run or its
@@ -225,6 +227,7 @@ export function RecentThreadsBubbleHost(props: {
           items={menuItems}
           position={snapshot.position}
           width={width}
+          working={working}
           onDismiss={handleDismiss}
           onPositionChange={setPosition}
           onSelectThread={handleSelectThread}
