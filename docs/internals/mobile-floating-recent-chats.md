@@ -6,60 +6,11 @@ T3 Code users often keep several agents working at once and need to notice when
 an off-screen thread starts, finishes, or needs a response. Searching the
 complete thread list is unnecessarily expensive for that attention loop.
 
-The feature is split into two phases:
+The launcher is an in-app overlay shared by the iOS and Android apps. It is
+not an operating-system surface: iOS has no supported API for a cross-app
+overlay, and Android notification bubbles would be separate native work.
 
-1. An in-app floating recent-chat launcher shared by the iOS and Android apps.
-2. Optional operating-system surfaces: Android notification bubbles and richer
-   iOS Live Activity / Dynamic Island navigation.
-
-This document records the platform findings and the phase-one design. Phase two
-is deliberately not part of the first implementation.
-
-## Platform findings
-
-### Android
-
-Android supports system-level notification bubbles that can float above other
-apps. They are backed by conversation notifications, long-lived shortcuts, and
-an embedded, resizable activity. The user controls whether an app or
-conversation may bubble, and the system can fall back to a normal notification.
-
-This is a viable future enhancement, but it is native Android work rather than
-an ordinary React Native overlay. T3 would need an Android bubble activity,
-conversation notification metadata, user-facing bubble controls, and Android
-push delivery for updates while the app process is absent. The existing Expo
-notification API does not expose the complete bubble contract, so an Expo
-module and config plugin are likely required.
-
-`SYSTEM_ALERT_WINDOW` could produce a fully app-controlled overlay, but it is
-not recommended. It is a sensitive special permission, adds foreground-service
-and store-policy risk, and is unnecessary when Android provides notification
-bubbles.
-
-References:
-
-- <https://developer.android.com/develop/ui/compose/notifications/bubbles>
-- <https://developer.android.com/reference/android/Manifest.permission#SYSTEM_ALERT_WINDOW>
-
-### iOS
-
-iOS does not expose a supported API for an arbitrary draggable app window over
-other apps. When T3 leaves the foreground, UIKit can suspend its process; the
-supported system surfaces are notifications, widgets, Live Activities, and the
-Dynamic Island. Picture in Picture is reserved for real media playback or video
-calls and is not an appropriate chat-launcher mechanism.
-
-T3 already has an Agent Activity Live Activity with thread deep links. Phase two
-can extend that existing surface with clearer thread navigation and status, but
-it cannot reproduce an Android-style movable overlay.
-
-References:
-
-- <https://developer.apple.com/documentation/uikit/preparing-your-ui-to-run-in-the-background>
-- <https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities>
-- <https://developer.apple.com/documentation/avkit/avpictureinpicturecontroller>
-
-## Phase one: in-app launcher
+## Design
 
 ### Product behavior
 
@@ -180,21 +131,3 @@ Performance requirements:
 - If a thread was deleted, archived, or its environment was removed after it
   entered recents, the existing route remains the final race-condition guard;
   selecting the stale row cannot affect another thread.
-
-## Phase two candidates
-
-### Android system bubble
-
-Prefer Android notification bubbles over `SYSTEM_ALERT_WINDOW`. A user-opted-in
-thread bubble can expand into a compact T3 activity, and that activity can offer
-the same bounded recent-thread switcher. The system owns global positioning,
-stacking, dismissal, and fallback notification behavior.
-
-### iOS Live Activity and Dynamic Island
-
-Extend the existing Agent Activity surface rather than attempting an overlay.
-Potential work includes clearer per-thread status, attention-first ordering,
-interactive actions where supported, and reliable thread deep links from Lock
-Screen and Dynamic Island presentations.
-
-Phase two requires its own product and lifecycle design before implementation.
