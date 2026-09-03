@@ -136,7 +136,7 @@ export function resolveRecentThreadLiveActivity(
   if (shell.latestTurn?.turnId !== undefined) {
     return { id: `background:${String(shell.latestTurn.turnId)}`, status };
   }
-  return { id: `background:${status}:${shell.updatedAt}`, status };
+  return { id: `background:${status}`, status };
 }
 
 export function resolveRecentThreadStatus(

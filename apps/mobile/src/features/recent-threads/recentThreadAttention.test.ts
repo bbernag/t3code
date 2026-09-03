@@ -274,6 +274,10 @@ describe("recent thread attention", () => {
         }),
       ),
     ).toEqual({ id: "background:turn-1", status: "working" });
+    expect(resolveRecentThreadLiveActivity(shell({ backgroundLiveness: "working" }))).toEqual({
+      id: "background:working",
+      status: "working",
+    });
   });
 
   it("summons the bubble for work and attention but not passive monitoring", () => {
