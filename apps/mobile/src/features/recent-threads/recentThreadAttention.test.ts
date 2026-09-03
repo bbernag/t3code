@@ -349,6 +349,21 @@ describe("recent thread attention", () => {
     ).toBe(true);
   });
 
+  it("keeps a dismiss mute while a bubble-route shell is missing", () => {
+    const working = item("working", "working");
+    const key = "environment-1:working";
+    const mutes = recentThreadLiveActivityMutes([working]);
+    const unknown = { ...working, liveActivity: undefined, status: null };
+
+    expect(
+      pruneRecentThreadLiveActivityMutes({
+        items: [unknown],
+        knownThreadKeys: new Set([key]),
+        mutes,
+      }),
+    ).toBe(mutes);
+  });
+
   it("flags active work for the ring only while a chat is working", () => {
     const noMutes = new Map<string, string>();
     const working = item("working", "working");

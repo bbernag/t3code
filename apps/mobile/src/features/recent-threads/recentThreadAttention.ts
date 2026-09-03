@@ -18,7 +18,7 @@ export type RecentThreadLiveActivity = {
 
 export type RecentThreadBubbleItem = {
   readonly attentionOccurredAt: string | null;
-  /** Undefined while the route intentionally does not observe this shell. */
+  /** Undefined means unknown or unobserved: the route does not observe this shell or no shell was seen. */
   readonly liveActivity: RecentThreadLiveActivity | null | undefined;
   readonly thread: RecentThreadBubbleEntry;
   readonly status: RecentThreadStatusKind | null;

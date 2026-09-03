@@ -122,7 +122,7 @@ export function RecentThreadsBubbleHost(props: {
             shell === null ? null : (resolveRecentThreadAttentionSignal(shell)?.occurredAt ?? null),
           liveActivity: routeSupportsBubble
             ? shell === null
-              ? null
+              ? undefined
               : resolveRecentThreadLiveActivity(shell)
             : undefined,
           thread,
