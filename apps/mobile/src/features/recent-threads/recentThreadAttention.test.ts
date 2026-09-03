@@ -11,6 +11,7 @@ import {
   pruneRecentThreadLiveActivityMutes,
   resolveRecentThreadAcknowledgementBaseline,
   resolveRecentThreadAttentionSignal,
+  resolveRecentThreadImportBaseline,
   resolveRecentThreadLiveActivity,
   resolveRecentThreadLiveStatus,
   resolveRecentThreadStatus,
@@ -109,6 +110,57 @@ describe("recent thread attention", () => {
     ).toBe(COMPLETED_AT);
     expect(resolveRecentThreadAcknowledgementBaseline(shell())).toBe(UPDATED_AT);
     expect(resolveRecentThreadAcknowledgementBaseline(shell({ updatedAt: "invalid" }))).toBeNull();
+  });
+
+  it("imports recorder threads with a baseline before the current run", () => {
+    const requestedAt = "2026-08-16T11:30:00.000Z";
+    const running = shell({
+      hasPendingApprovals: true,
+      latestTurn: { state: "running", completedAt: null, requestedAt },
+    });
+    const baseline = resolveRecentThreadImportBaseline(running);
+
+    expect(baseline).toBe("2026-08-16T11:29:59.999Z");
+    expect(isRecentThreadSignalUnseen({ kind: "approval", occurredAt: UPDATED_AT }, baseline)).toBe(
+      true,
+    );
+    expect(
+      isRecentThreadSignalUnseen(
+        { kind: "completed", occurredAt: "2026-08-16T12:05:00.000Z" },
+        baseline,
+      ),
+    ).toBe(true);
+    expect(
+      isRecentThreadSignalUnseen({ kind: "completed", occurredAt: COMPLETED_AT }, baseline),
+    ).toBe(false);
+  });
+
+  it("keeps a background-work completion unseen on import", () => {
+    const imported = shell({
+      backgroundLiveness: "working",
+      latestTurn: {
+        state: "completed",
+        completedAt: COMPLETED_AT,
+        requestedAt: "2026-08-16T10:30:00.000Z",
+      },
+    });
+    const baseline = resolveRecentThreadImportBaseline(imported);
+
+    expect(baseline).toBe("2026-08-16T10:29:59.999Z");
+    expect(
+      isRecentThreadSignalUnseen({ kind: "completed", occurredAt: COMPLETED_AT }, baseline),
+    ).toBe(true);
+  });
+
+  it("falls back to the acknowledgement baseline when an import has no turn", () => {
+    expect(resolveRecentThreadImportBaseline(shell())).toBe(
+      resolveRecentThreadAcknowledgementBaseline(shell()),
+    );
+    expect(
+      resolveRecentThreadImportBaseline(
+        shell({ latestTurn: { state: "running", completedAt: null } }),
+      ),
+    ).toBe(resolveRecentThreadAcknowledgementBaseline(shell()));
   });
 
   it("shows unseen attention and clears an acknowledged pending status", () => {

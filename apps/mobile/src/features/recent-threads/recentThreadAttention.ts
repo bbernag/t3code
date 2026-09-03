@@ -30,7 +30,7 @@ export type RecentThreadStatusShell = {
   readonly hasPendingUserInput: boolean;
   readonly latestTurn:
     | (Pick<OrchestrationLatestTurn, "completedAt" | "state"> &
-        Partial<Pick<OrchestrationLatestTurn, "turnId">>)
+        Partial<Pick<OrchestrationLatestTurn, "turnId" | "requestedAt" | "startedAt">>)
     | null;
   readonly session:
     | (Pick<OrchestrationSession, "status"> &
@@ -82,6 +82,24 @@ export function resolveRecentThreadAcknowledgementBaseline(
   const signal = resolveRecentThreadAttentionSignal(shell);
   if (signal !== null) return signal.occurredAt;
   return timestampValue(shell.updatedAt) === null ? null : shell.updatedAt;
+}
+
+const RECENT_THREAD_IMPORT_BASELINE_OFFSET_MS = 1;
+
+/**
+ * Baseline for recorder-imported threads. Departed threads are stamped with
+ * what the user already saw, but an import happens mid-run, so the cursor sits
+ * one millisecond before the current turn's request: everything belonging to
+ * that run (its pending request, its completion) stays unseen while older
+ * history stays seen. Without a turn there is no run to preserve, so this
+ * falls back to the acknowledgement baseline.
+ */
+export function resolveRecentThreadImportBaseline(shell: RecentThreadStatusShell): string | null {
+  const requestedAt = timestampValue(shell.latestTurn?.requestedAt ?? null);
+  if (requestedAt !== null) {
+    return new Date(requestedAt - RECENT_THREAD_IMPORT_BASELINE_OFFSET_MS).toISOString();
+  }
+  return resolveRecentThreadAcknowledgementBaseline(shell);
 }
 
 /** Live right now: the agent is working or monitoring, regardless of acknowledgements. */

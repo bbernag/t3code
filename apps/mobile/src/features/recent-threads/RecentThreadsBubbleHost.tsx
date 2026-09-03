@@ -17,6 +17,7 @@ import {
   recentThreadLiveActivityMutes,
   resolveRecentThreadAcknowledgementBaseline,
   resolveRecentThreadAttentionSignal,
+  resolveRecentThreadImportBaseline,
   resolveRecentThreadLiveActivity,
   resolveRecentThreadStatus,
   shouldSummonRecentThreadsBubble,
@@ -185,7 +186,9 @@ export function RecentThreadsBubbleHost(props: {
       if (thread.lastAcknowledgedAt !== null) continue;
       const shell = recentShells.get(recentThreadKey(thread));
       if (shell === undefined) continue;
-      const baseline = resolveRecentThreadAcknowledgementBaseline(shell);
+      // Null cursors come from recorder imports and departures before the shell loaded; in both
+      // cases the user has not seen the current run, so the import baseline is the right cursor.
+      const baseline = resolveRecentThreadImportBaseline(shell);
       if (baseline !== null) {
         acknowledgements.push({ thread, acknowledgedAt: baseline });
       }
